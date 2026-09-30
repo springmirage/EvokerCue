@@ -1,0 +1,31 @@
+## Interface: 120100
+## Title: 奶龙打地鼠
+## Notes: EvokerCue - 奶龙个人技能轴提醒、绿喷保护与心火监控
+## Author: 韶光逍珑
+## Version: 0.8.8
+## SavedVariables: EvokerCueDB, EvokerCueLogDB
+## OptionalDeps: MRT, NorthernSkyRaidTools, DreamForgeTools
+
+Core.lua
+Voice.lua
+Diagnostics.lua
+Parser.lua
+RaidaryPlan.lua
+DreamLoom.lua
+DreamLoomVerifier.lua
+DreamLoomSolver.lua
+DreamLoomFormatter.lua
+PlanGuard.lua
+MRTReader.lua
+PlanSources.lua
+AlertUI.lua
+TrackerHUD.lua
+CastTracker.lua
+HeartFireMonitor.lua
+Timeline.lua
+Runtime.lua
+HelpContent.lua
+UI.lua
+RaidaryPlanUI.lua
+DreamLoomUI.lua
+MRTButton.lua
