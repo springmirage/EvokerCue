@@ -7,6 +7,12 @@ TESTS = ROOT / 'tests'
 def runtime(mock=False, modules=()):
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute((TESTS/'wow_mock.lua').read_text(encoding='utf-8-sig') if mock else 'EC={}')
+    # This legacy isolated harness omits Core.lua. Use its real shared ID reader,
+    # rather than copying an implementation into the mock.
+    core = (ROOT/'Core.lua').read_text(encoding='utf-8-sig')
+    first = core.index('function EC:ReadCastBarID(')
+    last = core.index('\nfunction ', first + 1)
+    lua.execute(core[first:last])
     for name in modules:
         lua.execute((ROOT/name).read_text(encoding='utf-8-sig'), 'EvokerCue', lua.globals().EC)
     return lua

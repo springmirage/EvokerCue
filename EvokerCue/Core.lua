@@ -6,7 +6,7 @@ EC.ADDON_NAME = addonName
 EC.TITLE = "EvokerCue"
 EC.DISPLAY_NAME = "奶龙打地鼠"
 EC.DISPLAY_SUBTITLE = "EvokerCue · 奶龙个人技能轴提醒"
-EC.VERSION = "0.8.10"
+EC.VERSION = "0.8.11"
 EC.RELEASE_LABEL = "正式版"
 
 EC.defaults = {
@@ -110,6 +110,21 @@ EC.state = {
 function EC:IsSecret(value)
     return issecretvalue and issecretvalue(value) or false
 end
+
+-- Retail cast-bar IDs are opaque strings on current clients, numbers on older
+-- clients. Preserve the type; coercion can falsely identify unrelated casts.
+function EC:ReadCastBarID(value)
+    if self:IsSecret(value) then return nil, "RESTRICTED" end
+    if value == nil then return nil, "MISSING" end
+    local kind = type(value)
+    if kind == "string" then
+        if value == "" then return nil, "INVALID" end
+    elseif kind == "number" then
+        if value ~= value or value == math.huge or value == -math.huge then return nil, "INVALID" end
+    else return nil, "INVALID" end
+    return value, "READABLE"
+end
+
 function EC:SafeText(value)
     if self:IsSecret(value) then return "<restricted>" end
     local kind = type(value)

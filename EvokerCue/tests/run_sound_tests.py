@@ -68,7 +68,7 @@ EC.Voice:Stop(true);EC.Voice:PlaySkill('STASIS',true)
 assert(EC.state.logs[1]:find('语音播放失败',1,true))
 assert(not EC.Features:SkillEnabled('BALL') and not EC.Features:DreamLoomEnabled())
 assert(not EC.Voice:PlaySkill('BALL',true))
-assert(EC.VERSION=='0.8.10')
+assert(EC.VERSION=='0.8.11')
 print=originalPrint
 """)
 print('PASS 11 real UI buttons outside raid on Master/SFX/Dialog; 10 file previews plus one game alert per pass')
@@ -101,6 +101,6 @@ for name in names:
  k=data.index(b'\x01vorbis');assert data[k+11]==1 and struct.unpack_from('<I',data,k+12)[0]==44100
  assert 0.1<last_granule/44100<3
 assert '## Interface: 120105' in (ROOT/'EvokerCue.toc').read_text(encoding='utf-8')
-assert '## Version: 0.8.10' in (ROOT/'EvokerCue.toc').read_text(encoding='utf-8')
+assert '## Version: 0.8.11' in (ROOT/'EvokerCue.toc').read_text(encoding='utf-8')
 print('PASS all 10 OGG files: exact case, Ogg page CRC, mono 44100Hz, valid duration; path derived from addon name')
-print('PASS version 0.8.10 and Interface 120105 declarations')
+print('PASS version 0.8.11 and Interface 120105 declarations')

@@ -547,7 +547,11 @@ local function ClientState(observedToken)
     local state = { sessionActive = cast.sessionActive, timelineActive = timeline and timeline.active,
         mode = cast.sessionMode, wave = cast.currentWaveIndex, count = cast.breathCount,
         allowed = reliable and cast.currentWaveLimit or nil, quotaReliable = reliable,
-        quotaReason = cast.quotaReason, debtApplied = cast.currentWaveDebtApplied,
+        quotaReason = cast.quotaReason,
+        planWaveReason = cast.snapshot and cast.snapshot.waves
+            and cast.snapshot.waves[cast.currentWaveIndex or 0]
+            and cast.snapshot.waves[cast.currentWaveIndex or 0].invalidReason,
+        debtApplied = cast.currentWaveDebtApplied,
         borrowedThisWave = cast.borrowedThisWave, borrowedTotal = cast.borrowedTotal,
         activePresent = cast.activeEmpower ~= nil, prepullPresent = cast.prepullEmpower ~= nil,
         active = EmpowerState(cast.activeEmpower), prepull = EmpowerState(cast.prepullEmpower),
@@ -564,7 +568,15 @@ end
 
 -- Observations only: no matching, reservation, counting or recovery decisions.
 -- BEFORE is copied locally; persistence/callbacks happen after the handler.
-function Diagnostics:PrepareClientObservation(_, event, unit, castGUID, spellID, arg4, arg5, arg6)
+local function ArgumentShape(value)
+    -- Never compare, stringify, coerce or persist a secret/raw argument.
+    if EC:IsSecret(value) then return { state = "RESTRICTED" } end
+    if value == nil then return { state = "MISSING", kind = "nil" } end
+    return { state = "READABLE", kind = type(value) }
+end
+
+function Diagnostics:PrepareClientObservation(_, event, ...)
+    local unit, castGUID, spellID, arg4, arg5, arg6 = ...
     if not self.initialized or not self:IsEnabled() then return nil end
     local castEvent = event == "UNIT_SPELLCAST_EMPOWER_START" or event == "UNIT_SPELLCAST_EMPOWER_STOP"
         or event == "UNIT_SPELLCAST_SUCCEEDED"
@@ -578,10 +590,17 @@ function Diagnostics:PrepareClientObservation(_, event, unit, castGUID, spellID,
         local id = input.spellID
         if id and id ~= 355936 and id ~= 382614 and id ~= 370537 and id ~= 370562 and id ~= 370564 then return nil end
         if event == "UNIT_SPELLCAST_EMPOWER_STOP" then
-            input.castBarID, input.barState = ObservedField(arg6, "number")
+            input.castBarID, input.barState = EC:ReadCastBarID(arg6)
             input.complete, input.completeState = ObservedField(arg4, "boolean")
             input.interruptedBy, input.interruptedByState = ObservedField(arg5, "string")
-        else input.castBarID, input.barState = ObservedField(arg4, "number") end
+        else input.castBarID, input.barState = EC:ReadCastBarID(arg4) end
+        -- Fixed positions retain holes and trailing nils. No new raw values.
+        input.shapeSchema = "EVC_CAST_SHAPE_1"
+        input.argumentCount = select("#", ...)
+        input.argumentShapes = {}
+        for index = 1, 8 do
+            input.argumentShapes[index] = ArgumentShape(select(index, ...))
+        end
     end
     local cast = EC.CastTracker
     local empower = cast and (cast.activeEmpower or cast.prepullEmpower)

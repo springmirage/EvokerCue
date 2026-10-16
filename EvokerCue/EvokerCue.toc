@@ -2,7 +2,7 @@
 ## Title: 奶龙打地鼠
 ## Notes: EvokerCue - 奶龙个人技能轴提醒、绿喷保护与心火监控
 ## Author: 韶光逍珑
-## Version: 0.8.10
+## Version: 0.8.11
 ## SavedVariables: EvokerCueDB, EvokerCueLogDB
 ## OptionalDeps: MRT, NorthernSkyRaidTools, DreamForgeTools
 

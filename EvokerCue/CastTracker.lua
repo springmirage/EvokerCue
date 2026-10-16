@@ -85,7 +85,7 @@ end
 
 local function ReadEmpowerIdentity(castGUID, spellID, castBarID)
     local guid, guidState = ReadIdentityField(castGUID, "string")
-    local bar, barState = ReadIdentityField(castBarID, "number")
+    local bar, barState = EC:ReadCastBarID(castBarID)
     local spell, spellState = ReadIdentityField(spellID, "number")
     return { castGUID = guid, castBarID = bar, spellID = spell,
         guidState = guidState, barState = barState, spellState = spellState }
@@ -953,7 +953,7 @@ function CastTracker:ApplyActualWave(waveIndex, actualElapsed, plannedStasisTime
     self:ClearArm("new_actual_stasis")
     if EC.AlertUI then EC.AlertUI:ClearEmergency() end
     self.quotaConfirmed = wave.quotaReliable ~= false and (wave.breathLimit or 0) > 0
-    self.quotaReason = self.quotaConfirmed and "MATCHED" or "NO_BREATH_QUOTA"
+    self.quotaReason = self.quotaConfirmed and "MATCHED" or wave.invalidReason or "NO_BREATH_QUOTA"
     self.currentWavePlannedLimit = self.quotaConfirmed and wave.breathLimit or nil
     self.currentWaveLimit = self.currentWavePlannedLimit
     self.currentWaveDebtApplied = 0
@@ -970,8 +970,11 @@ function CastTracker:ApplyActualWave(waveIndex, actualElapsed, plannedStasisTime
         actualElapsed or 0, waveIndex, EC:FormatClock(wave.stasisTime), self.lastWaveMatchDelta,
         tostring(self.currentWaveLimit or "未确认"), self.currentWaveDebtApplied)
     if not self.quotaConfirmed and EC.PlanGuard then
-        EC.PlanGuard:Warn("EMPTY_WAVE:" .. waveIndex,
-            "W" .. waveIndex .. " 未提供有效绿喷配额：本波只记录实际次数，不进行超额纠错。")
+        EC:Log("绿喷配额未确认：W%d planned=%d reason=%s", waveIndex, wave.breathLimit or 0, self.quotaReason)
+        EC.PlanGuard:Warn("WAVE_QUOTA:" .. waveIndex,
+            (wave.breathLimit or 0) > 0
+                and ("W" .. waveIndex .. " 绿喷安排完整性未确认：本波只记录实际次数，不进行超额纠错。")
+                or ("W" .. waveIndex .. " 未提供有效绿喷配额：本波只记录实际次数，不进行超额纠错。"))
     end
     self:NotifyChanged()
     return true
