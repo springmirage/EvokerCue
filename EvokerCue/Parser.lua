@@ -668,7 +668,7 @@ end
 
 -- Evidence is scoped to supported skill domains. Prose without arrangement
 -- markers is outside the grammar; an uncertain arrangement is never prose.
-local function CandidateDomains(text)
+local function CandidateDomains(text, identity, selfAssignment)
     local keys = {}
     local lowered = StripMarkup(text):lower()
     for _, entry in ipairs(Parser:GetAliasIndex().entries) do
@@ -679,7 +679,20 @@ local function CandidateDomains(text)
             if def.ids[tonumber(digits)] then keys[key] = true end
         end
     end
-    if not next(keys) then for key in pairs(SKILL_DEFS) do keys[key] = true end end
+    -- An unexplained timed note alone does not imply an omitted Evoker cast.
+    -- Keep all domains uncertain when the player (including a shared class/role
+    -- selector) owns this instruction, or another segment of this line is theirs.
+    -- Unresolved selectors/spell payloads may still hide a personal assignment.
+    -- Known skill references above retain their own domain even without an owner.
+    local selector = GetSelectorText(text)
+    local mayBePersonal = selfAssignment
+        or MatchPlayerCandidate(StripMarkup(text), identity.candidates) ~= nil
+        or MatchAssignmentTarget(text, selector, identity) ~= nil
+        or selector:find("{", 1, true)
+        or text:lower():find("{spell:", 1, true) or text:find("|Hspell:", 1, true)
+    if not next(keys) and mayBePersonal then
+        for key in pairs(SKILL_DEFS) do keys[key] = true end
+    end
     return keys
 end
 
@@ -700,7 +713,7 @@ function Parser:BuildDomainEvidence(result, identity, otherOwners)
     for _, line in ipairs(integrity.lines) do
         for _, item in ipairs(line.evidence or {}) do
             if item.status == "UNKNOWN" or item.status == "PARTIAL" then
-                for key in pairs(CandidateDomains(item.text)) do
+                for key in pairs(CandidateDomains(item.text, identity, line.selfAssignment)) do
                     local domain = integrity.domains[key]
                     domain.candidates[#domain.candidates+1] = {lineNumber=line.lineNumber, time=item.time, state=item.status}
                     if domain.state ~= "PARTIAL" then domain.state = item.status end
@@ -938,6 +951,7 @@ function Parser:BuildResult(noteText, identity, sourceIssues, deduplicateAfterLi
             end
         end
         coverage.lines[#coverage.lines+1] = {lineNumber=lineNumber,status=status,segments=extra and extra.coverage,
+            selfAssignment = extra and extra.matchedPlayerName ~= nil or false,
             evidence=(status ~= "COMMENT" and status ~= "BLANK") and extra and extra.evidence or {{status=status,text=line}}}
         if status == "PARTIAL" then coverage.partialLines=coverage.partialLines+1
         elseif status == "UNKNOWN" then coverage.unknownLines=coverage.unknownLines+1

@@ -622,7 +622,7 @@ function CastTracker:CheckPrepullAura()
             return -- Storing -> ready is not a release. Wait for the second sample.
         end
         if now - self.prepullMissingSince >= 0.25 then
-            self:ResetPrepullState("战前静滞状态已结束（释放、取消或到期）")
+            self:FinishPrepullStasis("战前静滞状态已结束（释放、取消或到期）")
         end
         return
     end
@@ -857,9 +857,22 @@ function CastTracker:ObserveStasisRelease(spellID)
     -- Before a Boss starts, releasing Stasis means this prepull attempt is over.
     -- Clear the upper record HUD immediately.  During a Boss this branch is never
     -- taken: Release Stasis must NOT change Wave or Dream Breath count.
+    -- MRT_TEST simulates that lifecycle too; only its prepull cache is cleared.
     if not (EC.Runtime and EC.Runtime.encounterActive) then
-        self:ResetPrepullState("开怪前释放静滞")
+        self:FinishPrepullStasis("开怪前释放静滞")
     end
+end
+
+-- A real Stasis lifecycle ending clears its prepull cache in every mode.
+-- An active tactical-board test simulates Boss counting; keep its live ledger.
+-- Explicit user reset/death/stop still use ResetPrepullState/EndSession.
+function CastTracker:FinishPrepullStasis(reason)
+    if self.sessionActive and self.sessionMode == "MRT_TEST" then
+        self:ClearRecentStasisHistory(reason)
+        self:NotifyChanged()
+        return true
+    end
+    return self:ResetPrepullState(reason)
 end
 
 function CastTracker:ClearRecentStasisHistory(reason)
@@ -1263,8 +1276,10 @@ function CastTracker:HandleSucceeded(castGUID, spellID, castBarID)
 
         if treatedAsRelease then
             if not (EC.Runtime and EC.Runtime.encounterActive) then
-                self:ResetPrepullState("开怪前静滞释放回报")
-            elseif self.sessionActive then
+                self:FinishPrepullStasis("开怪前静滞释放回报")
+            end
+            if self.sessionActive and (self.sessionMode == "MRT_TEST"
+                or (EC.Runtime and EC.Runtime.encounterActive)) then
                 self:DismissActiveReminder("RELEASE_STASIS", "静滞释放回报")
             end
             return
