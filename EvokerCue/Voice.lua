@@ -49,6 +49,26 @@ local function CanPlay(kind, force)
     return true
 end
 
+function Voice:GetBackend()
+    return EC.db and EC.db.voice and EC.db.voice.backend == "OGG" and "OGG" or "TTS"
+end
+function Voice:SetBackend(backend)
+    if backend ~= "TTS" and backend ~= "OGG" then return false end
+    if not EC.state.dbReady or not EC.db.voice then return false end
+    self:Stop(true)
+    EC.db.voice.backend = backend
+    return true
+end
+function Voice:CheckBackend(force)
+    if self:GetBackend() == "OGG" then return PlaySoundFile ~= nil end
+    if EC.TTS then return EC.TTS:Ready(force) end
+    if force or not self.missingTTSWarned then
+        self.missingTTSWarned = true
+        print("|cffffc857[奶龙打地鼠]|r 内置TTS暂不可用，请在声音设置切换“内置语音包”。")
+    end
+    return false
+end
+
 function Voice:Initialize()
     if self.initialized then return end
     self.initialized = true
@@ -65,6 +85,7 @@ end
 
 function Voice:IsValid(item)
     if not CanPlay(item.kind, item.force) then return false end
+    if item.backend and item.backend ~= self:GetBackend() then return false end
     if item.force then return true end
     if item.special == "CANCEL" then
         local cast = EC.CastTracker
@@ -127,20 +148,30 @@ function Voice:Pump()
         local nextItem = table.remove(self.queue, 1)
         if self:IsValid(nextItem) then item = nextItem; break end
     end
-    if not item or not PlaySoundFile then return end
-    local ok, willPlay, handle = pcall(PlaySoundFile, SOUND_ROOT .. item.file, GetChannel())
-    if not ok or EC:IsSecret(willPlay) or not willPlay then
-        EC:Log("语音播放失败：%s", item.file)
+    if not item then return end
+    local submitted, handle, duration = false, nil, item.duration
+    if item.backend == "TTS" then
+        if EC.TTS then submitted, duration = EC.TTS:Speak(item.label, item.force) end
+        if submitted then EC:Log("已提交TTS：%s（未确认实际出声）", item.label) end
+    elseif PlaySoundFile then
+        local ok, willPlay, soundHandle = pcall(PlaySoundFile, SOUND_ROOT .. item.file, GetChannel())
+        submitted = ok and not EC:IsSecret(willPlay) and willPlay or false
+        handle = not EC:IsSecret(soundHandle) and soundHandle or nil
+        if submitted then EC:Log("播放语音：%s (%s)", item.label or item.file, item.file) end
+    end
+    if not submitted then
+        item.deliveryFailed = true
+        if item.backend == "OGG" then EC:Log("语音播放失败：%s", item.file) end
         local generation = self.generation
         C_Timer.After(0, function() if Voice.generation == generation then Voice:Pump() end end)
         return
     end
     self.playing, self.currentItem = true, item
-    self.currentHandle = not EC:IsSecret(handle) and handle or nil
+    self.currentHandle = handle
     local generation = self.generation
-    EC:Log("播放语音：%s (%s) owner=%s", item.label or item.file, item.file,
-        item.owner and tostring(item.owner.eventID or item.owner.tokenIndex) or "独立提示")
-    C_Timer.After((item.duration or 0.7) + self.gap, function()
+    -- Local pacing only. TTS exposes no per-addon completion/stop handle;
+    -- cancelling an EVC item never calls the global StopSpeakingText API.
+    C_Timer.After((duration or 0.7) + self.gap, function()
         if Voice.generation ~= generation then return end
         Voice.playing, Voice.currentHandle, Voice.currentItem = false, nil, nil
         Voice:Pump()
@@ -153,7 +184,8 @@ function Voice:Enqueue(definition, kind, force, interrupt, owner, special)
         return false
     end
     if not definition or not CanPlay(kind, force) then return false end
-    local item = { file = definition.file, duration = definition.duration, label = definition.label,
+    if not self:CheckBackend(force) then return false end
+    local item = { backend = self:GetBackend(), file = definition.file, duration = definition.duration, label = definition.label,
         kind = kind, force = force, owner = owner, special = special,
         snapshot = EC.Timeline and EC.Timeline.snapshot }
     if special == "CANCEL" and not force and EC.CastTracker then
@@ -168,7 +200,7 @@ function Voice:Enqueue(definition, kind, force, interrupt, owner, special)
     else table.insert(self.queue, item) end
     while #self.queue > 24 do table.remove(self.queue) end
     self:Pump()
-    return true
+    return item.deliveryFailed ~= true
 end
 
 function Voice:PlaySkill(skillKey, force, owner)

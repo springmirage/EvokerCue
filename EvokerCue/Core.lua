@@ -6,7 +6,7 @@ EC.ADDON_NAME = addonName
 EC.TITLE = "EvokerCue"
 EC.DISPLAY_NAME = "奶龙打地鼠"
 EC.DISPLAY_SUBTITLE = "EvokerCue · 奶龙个人技能轴提醒"
-EC.VERSION = "0.8.9"
+EC.VERSION = "0.8.10"
 EC.RELEASE_LABEL = "正式版"
 
 EC.defaults = {
@@ -33,6 +33,8 @@ EC.defaults = {
 
     voice = {
         enabled = true,
+        backend = "TTS",
+        tts = { voice = "AUTO", rate = 0, volume = 100 },
         normalEnabled = true,
         correctionEnabled = true,
         channel = "Master",
@@ -371,6 +373,14 @@ function EC:InitializeDB()
 
     ApplyDefaults(EvokerCueDB, self.defaults)
     self.db = EvokerCueDB
+
+    -- First adoption selects the newly requested default for existing users.
+    -- Subsequent loads preserve an explicit switch back to the bundled pack.
+    if self.db.migration.ttsBackendDefault ~= true then
+        self.db.voice.backend = "TTS"
+        self.db.migration.ttsBackendDefault = true
+    end
+    if self.db.voice.backend ~= "TTS" and self.db.voice.backend ~= "OGG" then self.db.voice.backend = "TTS" end
 
     -- 0.8.4 compatibility: the old single MRT source now maps explicitly to
     -- MRT current/team note. Keep the version unchanged; only the source key is

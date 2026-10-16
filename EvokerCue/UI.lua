@@ -1272,15 +1272,15 @@ function UI:CreateInterfacePage(content)
 end
 
 function UI:CreateSoundPage(content)
-    local holder, page = CreateControlPage(content, "EvokerCueSoundScroll", 720)
+    local holder, page = CreateControlPage(content, "EvokerCueSoundScroll", 856)
     self.pages.sound = holder
 
     CreateSection(page, "语音提醒", 26, -28, 660)
-    CreateText(page, "GameFontHighlightSmall", "声音测试可在副本外使用；测试前请开启插件总开关。", 26, -698, 660)
+    CreateText(page, "GameFontHighlightSmall", "声音测试可在副本外使用；测试前请开启插件总开关。", 26, -826, 660)
     self.voiceEnabledCheck = CreateCheckbox(page, "启用语音提醒", 26, -66,
         function() return EC.db and EC.db.voice and EC.db.voice.enabled end,
         function(value) EC.db.voice.enabled = value; if EC.Voice then EC.Voice:Prune() end end,
-        "关闭后不会播放奶龙打地鼠的语音文件。")
+        "关闭后不会播放奶龙打地鼠的语音提醒。")
     self.voiceNormalCheck = CreateCheckbox(page, "普通技能语音", STYLE.columnLeft, -102,
         function() return EC.db and EC.db.voice and EC.db.voice.normalEnabled end,
         function(value) EC.db.voice.normalEnabled = value; if EC.Voice then EC.Voice:Prune() end end,
@@ -1289,12 +1289,24 @@ function UI:CreateSoundPage(content)
         function() return EC.db and EC.db.voice and EC.db.voice.correctionEnabled end,
         function(value) EC.db.voice.correctionEnabled = value; if EC.Voice then EC.Voice:Prune() end end,
         "先别喷、绿喷晚啦、取消绿喷。")
-    self.voiceChannel = CreateChoice(page, "语音通道", STYLE.columnLeft, -150, STYLE.columnWidth,
+    self.voiceBackend = CreateChoice(page, "语音来源", STYLE.columnLeft, -150, STYLE.columnWidth,
+        { { key = "TTS", label = "内置 TTS（默认）" }, { key = "OGG", label = "内置语音包" } },
+        function() return EC.Voice and EC.Voice:GetBackend() or (EC.db.voice and EC.db.voice.backend) or "TTS" end,
+        function(value) EC.Voice:SetBackend(value); UI:RefreshSound() end)
+    self.voiceChannel = CreateChoice(page, "语音包通道", STYLE.columnRight, -150, STYLE.columnWidth,
         EC.SOUND_CHANNELS,
         function() return EC.db.voice.channel end,
         function(value) EC.db.voice.channel = value end)
 
-    CreateSection(page, "普通技能语音测试", 26, -232, 660)
+    CreateText(page, "GameFontNormal", "TTS 音色", 26, -220, 660)
+    self.ttsVoice = CreateDropdown(page, "EvokerCueTTSVoices", 26, -244, 660,
+        function() return EC.TTS and EC.TTS:GetVoiceItems() or { { text = "当前 TTS 不可用", disabled = true } } end,
+        function(value) EC.Voice:Stop(true); EC.db.voice.tts.voice = value; UI:RefreshSound() end)
+    local ttsHint = CreateText(page, "GameFontHighlightSmall",
+        "内置TTS：语速0、音量100；音色语言以客户端列表为准。\n语音包通道只影响语音包。备用游戏警告音独立保留。", 26, -286, 660)
+    ttsHint:SetSpacing(4)
+
+    CreateSection(page, "普通技能语音测试", 26, -360, 660)
     local skillTests = {
         { "绿喷", "DREAM_BREATH" }, { "静滞", "STASIS" }, { "释放静滞", "RELEASE_STASIS" },
         { "回溯", "REWIND" }, { "微风", "ZEPHYR" }, { "空间悖论", "SPATIAL_PARADOX" },
@@ -1303,31 +1315,31 @@ function UI:CreateSoundPage(content)
     for index, item in ipairs(skillTests) do
         local column = (index - 1) % 3
         local row = math.floor((index - 1) / 3)
-        CreateButton(page, item[1], 26 + column * 220, -270 - row * 40, 196, function()
+        CreateButton(page, item[1], 26 + column * 220, -398 - row * 40, 196, function()
             if EC.Voice and EC.Voice.PlaySkill then EC.Voice:PlaySkill(item[2], true) end
         end)
     end
 
-    CreateSection(page, "绿喷纠错语音测试", 26, -398, 660)
+    CreateSection(page, "绿喷纠错语音测试", 26, -526, 660)
     local correctionTests = { { "先别喷", "EARLY" }, { "绿喷晚啦", "LATE" }, { "取消绿喷", "CANCEL" } }
     for index, item in ipairs(correctionTests) do
-        CreateButton(page, item[1], 26 + (index - 1) * 220, -436, 196, function()
+        CreateButton(page, item[1], 26 + (index - 1) * 220, -564, 196, function()
             if EC.Voice and EC.Voice.PlaySpecial then EC.Voice:PlaySpecial(item[2], true, true) end
         end)
     end
 
-    CreateSection(page, "紧急警告音", 26, -500, 660)
-    self.soundEnabledCheck = CreateCheckbox(page, "启用备用警告音", 26, -538,
+    CreateSection(page, "紧急警告音", 26, -628, 660)
+    self.soundEnabledCheck = CreateCheckbox(page, "启用备用警告音", 26, -666,
         function() return EC.db and EC.db.sound.enabled end,
         function(value) EC.db.sound.enabled = value end,
         "当“取消绿喷”语音关闭时，继续使用原来的紧急警告音。")
-    self.soundChoice = CreateChoice(page, "警告音", STYLE.columnLeft, -582, STYLE.columnWidth, EC.SOUND_CHOICES,
+    self.soundChoice = CreateChoice(page, "警告音", STYLE.columnLeft, -710, STYLE.columnWidth, EC.SOUND_CHOICES,
         function() return EC.db.sound.key end,
         function(value) EC.db.sound.key = value end)
-    self.soundChannel = CreateChoice(page, "警告音通道", STYLE.columnRight, -582, STYLE.columnWidth, EC.SOUND_CHANNELS,
+    self.soundChannel = CreateChoice(page, "警告音通道", STYLE.columnRight, -710, STYLE.columnWidth, EC.SOUND_CHANNELS,
         function() return EC.db.sound.channel end,
         function(value) EC.db.sound.channel = value end)
-    CreateButton(page, "测试警告音", 26, -654, 140, function()
+    CreateButton(page, "测试警告音", 26, -782, 140, function()
         if EC.PlayAlertSound then EC:PlayAlertSound(true) end
     end)
 end
@@ -1851,6 +1863,8 @@ function UI:RefreshSound()
     if self.voiceEnabledCheck then self.voiceEnabledCheck:Refresh() end
     if self.voiceNormalCheck then self.voiceNormalCheck:Refresh() end
     if self.voiceCorrectionCheck then self.voiceCorrectionCheck:Refresh() end
+    if self.voiceBackend then self.voiceBackend:Refresh() end
+    if self.ttsVoice then self.ttsVoice:SetText(EC.TTS and EC.TTS:GetVoiceLabel() or "当前 TTS 不可用，可切换内置语音包") end
     if self.voiceChannel and self.voiceChannel.Refresh then self.voiceChannel:Refresh() end
     if self.soundEnabledCheck then self.soundEnabledCheck:Refresh() end
     if self.soundChoice and self.soundChoice.Refresh then self.soundChoice:Refresh() end
