@@ -30,6 +30,7 @@ function D:GetBaseForDraft(plan,text)
     return text==record.generatedText and record.baseText or Normalize(record.baseText)
 end
 function D:OnPlanSave(plan,text)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return end
     local data=plan.dreamLoom
     if not data then return end
     local old=self:FindProvenance(plan,plan.text or "")
@@ -44,6 +45,7 @@ function D:OnPlanSave(plan,text)
     if new then data.baseText,data.generatedText,data.generation=new.baseText,new.generatedText,self:CopyPlanData(new.generation) end
 end
 function D:RestoreProvenance(plan,text)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return end
     local data=plan.dreamLoom
     if not data then return end
     local record=self:FindProvenance(plan,text)
@@ -52,6 +54,10 @@ function D:RestoreProvenance(plan,text)
     data.generation=record and record.generation
 end
 function D:GetSettings(plan)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then
+        local data = plan.dreamLoom or {}
+        return data.settings or {endText="",mode="STRICT_BBY"}, data
+    end
     -- Optional per-plan metadata, not a second plan library.
     if not plan.dreamLoom then plan.dreamLoom={schemaVersion=1,settings={endText="",mode="STRICT_BBY"},settingsRevision=0} end
     local data=plan.dreamLoom
@@ -59,12 +65,14 @@ function D:GetSettings(plan)
     return data.settings,data
 end
 function D:SetParameter(key,value)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return false end
     local settings,data=self:GetSettings(EC.RaidaryPlan:GetDB())
     if settings[key]~=value then
         settings[key]=value;data.settingsRevision=(data.settingsRevision or 0)+1;self:InputsChanged()
     end
 end
 function D:Prepare()
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return nil,"DISABLED" end
     local plan=EC.RaidaryPlan:GetDB()
     local settings,data=self:GetSettings(plan)
     local fightEnd,errorText=self:ParseEnd(settings.endText)
@@ -103,6 +111,7 @@ function D:Prepare()
     return request
 end
 function D:IsCurrent(request)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return false end
     local plan=EC.RaidaryPlan:GetDB();local settings,data=self:GetSettings(plan)
     return request and request.planID==plan.id and request.sourceRevision==self.inputRevision
         and request.sourceText==EC.RaidaryPlan:GetDraft() and request.parameterRevision==(data.settingsRevision or 0)
@@ -120,6 +129,7 @@ function D:TimelineText(request,result,includeStasis)
     return table.concat(lines,"\n")
 end
 function D:Apply(request,result)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return false,"DISABLED" end
     if not self:IsCurrent(request) then return false,"输入已变化，旧结果不能应用，请重新计算。" end
     if not result or not result.verified or (result.status~="SOLVED" and result.status~="BUDGET_LIMIT") then
         return false,"结果尚未通过独立验证，不能应用。"

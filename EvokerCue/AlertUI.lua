@@ -332,6 +332,7 @@ end
 -- A separate owner avoids clearing/replacing the Dream Breath emergency.
 -- This path is text-only: no generic sound and no speech queue entry.
 function AlertUI:ShowBallEmergency()
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return end
     if not self.initialized then return end
     self.ballEmergencyEntry = { remaining = 0, state = "CRITICAL", event = {
         emergency = true, statusText = "取消读条！", skillKey = "BALL", skillName = "溜溜球",
@@ -361,6 +362,7 @@ function AlertUI:ClearEmergency()
 end
 
 function AlertUI:Render(entries)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then self.ballEmergencyEntry = nil end
     if not self.initialized or not self.frame then
         return
     end
@@ -398,7 +400,9 @@ function AlertUI:Render(entries)
     -- warning. Emergency remains independent from reminder.enabled.
     if EC.db.reminder.enabled then
         for _, entry in ipairs(entries) do
-            table.insert(renderEntries, entry)
+            if not EC.Features or EC.Features:SkillEnabled(entry.event.skillKey) then
+                table.insert(renderEntries, entry)
+            end
         end
     end
 

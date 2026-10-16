@@ -143,6 +143,14 @@ Parser.SKILL_DEFS = SKILL_DEFS
 Parser.SKILL_PRIORITY = SKILL_PRIORITY
 Parser.StripMarkup = StripMarkup
 
+function Parser:GetEnabledSkillKeys()
+    local keys = {}
+    for _, key in ipairs(SKILL_PRIORITY) do
+        if not EC.Features or EC.Features:SkillEnabled(key) then keys[#keys + 1] = key end
+    end
+    return keys
+end
+
 function Parser:GetAliasSignature()
     local configured = EC.db and EC.db.timeline and EC.db.timeline.customAliases or {}
     local parts = {}
@@ -741,13 +749,17 @@ function Parser:ParseLineEvents(rawLine, lineNumber, identity, otherOwners)
             else
                 for _, skill in ipairs(skills) do
                     local def, spellID = skill.def, skill.spellID
-                    events[#events + 1] = {
-                        time = seconds, lineNumber = lineNumber, rawLine = rawLine,
-                        content = segment, cleanContent = cleanContent, assignmentOrder = #events + 1,
-                        matchedPlayerName = matchedCandidate.value, matchedPlayerSource = matchedCandidate.source,
-                        skillKey = def.key, skillName = def.name, spellID = spellID, slotReliable = true,
-                        texture = ResolveDefinitionTexture(def, spellID), color = def.color, waveIndex = 0,
-                    }
+                    -- Recognize disabled assignments for coverage only; never
+                    -- turn them into reminders, counts or wave inputs.
+                    if not EC.Features or EC.Features:SkillEnabled(def.key) then
+                        events[#events + 1] = {
+                            time = seconds, lineNumber = lineNumber, rawLine = rawLine,
+                            content = segment, cleanContent = cleanContent, assignmentOrder = #events + 1,
+                            matchedPlayerName = matchedCandidate.value, matchedPlayerSource = matchedCandidate.source,
+                            skillKey = def.key, skillName = def.name, spellID = spellID, slotReliable = true,
+                            texture = ResolveDefinitionTexture(def, spellID), color = def.color, waveIndex = 0,
+                        }
+                    end
                 end
             end
         else
@@ -756,6 +768,11 @@ function Parser:ParseLineEvents(rawLine, lineNumber, identity, otherOwners)
         extra.evidence[#extra.evidence+1] = {status=extra.coverage[#extra.coverage], text=segment, time=seconds}
     end
     if #events > 0 then return events, nil, extra end
+    if extra.matchedPlayerName and #extra.issues == 0 then
+        local parsed = true
+        for _, status in ipairs(extra.coverage) do if status ~= "PARSED_SELF" and status ~= "EXCLUDED_OTHER" then parsed = false end end
+        if parsed then return {}, nil, extra end
+    end
     return nil, #extra.issues > 0 and "AMBIGUOUS_ASSIGNMENT"
         or (extra.matchedPlayerName and "UNSUPPORTED_SKILL" or "PLAYER_MISMATCH"), extra
 end

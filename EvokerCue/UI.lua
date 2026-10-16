@@ -1026,7 +1026,7 @@ function UI:CreateTimelinePage(content)
     self.aliasEdits = {}
     self.builtinAliasLabels = {}
     local rowTop = 320 + self.aliasHelp:GetStringHeight() + 18
-    for _, key in ipairs(EC.Parser.SKILL_PRIORITY) do
+    for _, key in ipairs(EC.Parser:GetEnabledSkillKeys()) do
         local def = EC.Parser:GetSkillDefinition(key)
         local y = -rowTop
         CreateText(page, "GameFontHighlight", def.name, 22, y - 8, 124)
@@ -1276,6 +1276,7 @@ function UI:CreateSoundPage(content)
     self.pages.sound = holder
 
     CreateSection(page, "语音提醒", 26, -28, 660)
+    CreateText(page, "GameFontHighlightSmall", "声音测试可在副本外使用；测试前请开启插件总开关。", 26, -698, 660)
     self.voiceEnabledCheck = CreateCheckbox(page, "启用语音提醒", 26, -66,
         function() return EC.db and EC.db.voice and EC.db.voice.enabled end,
         function(value) EC.db.voice.enabled = value; if EC.Voice then EC.Voice:Prune() end end,
@@ -1442,12 +1443,13 @@ UI.widgets = {
 }
 
 function UI:ShowTab(key)
+    if key == "loom" and EC.Features and not EC.Features:DreamLoomEnabled() then key = "functions" end
     if key ~= "functions" and key ~= "loom" and key ~= "plan" then return end
     self:CancelPositionConfirmation()
     self.activeTab = key
     self.functionRoot:SetShown(key == "functions")
     self.planPage:SetShown(key == "plan")
-    self.loomPage:SetShown(key == "loom")
+    if self.loomPage then self.loomPage:SetShown(key == "loom") end
     for tabKey, button in pairs(self.tabButtons) do
         button:SetSelected(tabKey == key)
     end
@@ -1461,12 +1463,14 @@ function UI:CreateBottomTabs(frame)
     SetBackdrop(footer, COLORS.panel, COLORS.border)
     local previous
     for i, item in ipairs({ { key = "functions", label = "设置" }, { key = "loom", label = "梦境织机" }, { key = "plan", label = "战术板" } }) do
-        local key = item.key
-        local button = CreateButton(footer, item.label, 0, 0, 120, function() UI:ShowTab(key) end)
-        button:ClearAllPoints()
-        if previous then button:SetPoint("TOPLEFT", previous, "TOPRIGHT", 8, 0)
-        else button:SetPoint("TOPLEFT", footer, "TOPLEFT", 12, -5) end
-        self.tabButtons[key], previous = button, button
+        if item.key ~= "loom" or not EC.Features or EC.Features:DreamLoomEnabled() then
+            local key = item.key
+            local button = CreateButton(footer, item.label, 0, 0, 120, function() UI:ShowTab(key) end)
+            button:ClearAllPoints()
+            if previous then button:SetPoint("TOPLEFT", previous, "TOPRIGHT", 8, 0)
+            else button:SetPoint("TOPLEFT", footer, "TOPLEFT", 12, -5) end
+            self.tabButtons[key], previous = button, button
+        end
     end
 end
 
@@ -1502,7 +1506,7 @@ function UI:CreatePanel()
     self:CreateSoundPage(content)
     self:CreateFeedbackPage(content)
     self.planPage = EC.RaidaryPlanUI:Create(self, frame)
-    self.loomPage = EC.DreamLoom.UI:Create(self, frame)
+    if not EC.Features or EC.Features:DreamLoomEnabled() then self.loomPage = EC.DreamLoom.UI:Create(self, frame) end
     self:CreateBottomTabs(frame)
 
     frame:SetScript("OnShow", function()
@@ -1871,7 +1875,7 @@ function UI:Refresh()
     self:RefreshInterface()
     self:RefreshSound()
     if EC.RaidaryPlanUI then EC.RaidaryPlanUI:RefreshStatus() end
-    if EC.DreamLoom and EC.DreamLoom.UI then EC.DreamLoom.UI:Refresh() end
+    if EC.DreamLoom and EC.DreamLoom.UI and (not EC.Features or EC.Features:DreamLoomEnabled()) then EC.DreamLoom.UI:Refresh() end
     if self.headerEnabledCheck and self.headerEnabledCheck.Refresh then
         self.headerEnabledCheck:Refresh()
     end

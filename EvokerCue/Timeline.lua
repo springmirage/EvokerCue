@@ -122,10 +122,12 @@ function Timeline:BuildSnapshot(result)
     end
 
     for _, event in ipairs(result.events or {}) do
-        local copied = CopyEvent(event)
-        table.insert(snapshot.events, copied)
-        if copied.time > snapshot.lastEventTime then
-            snapshot.lastEventTime = copied.time
+        if not EC.Features or EC.Features:SkillEnabled(event.skillKey) then
+            local copied = CopyEvent(event)
+            table.insert(snapshot.events, copied)
+            if copied.time > snapshot.lastEventTime then
+                snapshot.lastEventTime = copied.time
+            end
         end
     end
 
@@ -691,6 +693,7 @@ local BALL_TRANSITIONS = {
     CASTING = {DUE=true, DONE=true},
 }
 function Timeline:SetBallSlotState(event, state, reason)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return false end
     if event.ballState then
         local allowed = BALL_TRANSITIONS[event.ballState]
         if not allowed or not allowed[state] then return false end
@@ -706,6 +709,7 @@ function Timeline:SetBallSlotState(event, state, reason)
 end
 
 function Timeline:RefreshBallSlots(elapsed)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return end
     local lead, hold = EC.db.reminder.leadTime or 3, EC.db.reminder.postHold or 0.9
     local newest
     for _, event in ipairs(self.snapshot and self.snapshot.events or {}) do
@@ -731,6 +735,7 @@ end
 -- time's lead window opens. CASTING keeps its owner. Among remaining candidates
 -- take the earliest time, with snapshot order as the stable same-time tie break.
 function Timeline:GetBallSlot(elapsed)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return nil, false end
     self:RefreshBallSlots(elapsed)
     local chosen, hasPlan
     for _, event in ipairs(self.snapshot and self.snapshot.events or {}) do

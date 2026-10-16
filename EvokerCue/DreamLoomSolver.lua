@@ -142,6 +142,11 @@ end
 function Job:Cancel() if not self.result then self:Finish("CANCELLED") end end
 function Job:Limit() if not self.result then self:Finish("BUDGET_LIMIT") end end
 function Job:Step(budget)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then
+        self.best=nil;self.thread=nil
+        self.result={status="DISABLED",optimal=false,verified=false,events={},diagnostics={}}
+        return self.result
+    end
     if self.result then return self.result end
     for _=1,(budget or 64) do
         if self.expandedStates>=self.maxStates then return self:Finish("BUDGET_LIMIT") end
@@ -153,6 +158,9 @@ function Job:Step(budget)
     end
 end
 function D:NewJob(request,options)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then
+        return setmetatable({expandedStates=0, result={status="DISABLED",optimal=false,verified=false,events={},diagnostics={}}},Job)
+    end
     -- Snapshot all solver inputs; caller mutation cannot change a live search.
     if type(request) ~= "table" then request = {} end
     local r={fightEnd=request.fightEnd,mode=request.mode,stasisTimes={},sourceRevision=request.sourceRevision}

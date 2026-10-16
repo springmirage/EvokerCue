@@ -3,6 +3,7 @@ local D=EC.DreamLoom
 -- Independent verifier: two real charges plus a FIFO recharge queue.
 -- It does not call the solver's debt transitions, macros or state encoding.
 function D:Verify(request,events)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return nil,"DISABLED" end
     local inputError=self:CheckRequest(request)
     if inputError then return nil,inputError end
     local time,charges,queue,ready=0,2,{},9

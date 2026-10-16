@@ -1161,6 +1161,7 @@ function CastTracker:ClearBallCast(reason)
 end
 
 function CastTracker:IsBallCastPending(event)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return false end
     local cast = self.ballCast
     if not cast then return false end
     if not self.sessionActive or self.snapshot ~= cast.snapshot or Now() > cast.expiresAt then
@@ -1173,6 +1174,7 @@ function CastTracker:IsBallCastPending(event)
 end
 
 function CastTracker:StartBallCast(guid, spell, bar)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return end
     local id = ReadEmpowerIdentity(guid, spell, bar)
     if id.spellID ~= 373861 then return end
     if not id.castGUID and id.castBarID == nil then
@@ -1214,6 +1216,7 @@ function CastTracker:StartBallCast(guid, spell, bar)
 end
 
 function CastTracker:FinishBallCast(guid, spell, bar, succeeded)
+    if EC.Features and not EC.Features:SkillEnabled("BALL") then return end
     local cast = self.ballCast
     if not cast or not self:IsBallCastPending(cast.event) then
         if succeeded then self:LogEmpower("BALL_SUCCEEDED", nil, ReadEmpowerIdentity(guid, spell, bar), "UNPAIRED", nil, "无有效手动起手") end

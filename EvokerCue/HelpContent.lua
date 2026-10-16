@@ -4,12 +4,15 @@ local addonName, EC = ...
 EC.HelpContent = {
     usage = [==[欢迎使用奶龙打地鼠。
 
-左下方【设置】调整插件；【战术板】编辑 Raidary Plan。
+当前页签为【设置】【梦境织机】【战术板】：调整插件、战前排轴、编辑 Raidary Plan。
 可直接写：00:01 韶光逍珑 静滞。一行一条，名字和技能前后的横杠、尖括号可省略。
 兼容 {time:0:01} - 韶光逍珑 <静滞>、{spell:370537}、{spellid:370537}、spellid:370537、法术链接及单独技能 ID。
 【保存】不切换来源；【保存并启用】设为提醒来源；【检查】只预览草稿，不改当前计划。
 切页保留草稿；战斗中保存或切换来源，下次开怪生效。
-本版仍识别原有七类技能，溜溜球识别、战斗提醒及自动排轴将在后续加入。
+已接入梦境织机战前排轴和溜溜球视觉提醒，支持球/花解析；求解结果经独立验证后只应用到当前方案草稿，需保存或启用后生效，不自动切换提醒来源。
+战斗中不计算或应用；球/花未配置专用语音，真实施法回报仍待游戏内验证。
+
+声音页的手动测试可在副本外使用；请先开启插件总开关。正常自动提醒仍遵守区域限制与原有声音设置。
 
 1. 在“时间轴”选择战术板来源：MRT当前方案（团队）、MRT个人方案（个人）、MRT两者（团队+个人）、NSRT、DFT 或 Raidary Plan。默认 MRT当前方案（团队）。请确认来源状态为已读取；开怪后本场安排冻结。
 
@@ -28,7 +31,7 @@ EC.HelpContent = {
 QQ群：251935247
 ]==],
     feedback = [==[奶龙打地鼠 · 问题反馈
-版本：0.8.7
+版本：0.8.9
 作者：韶光逍珑
 QQ群：251935247
 
@@ -49,7 +52,7 @@ World of Warcraft\_retail_\WTF\Account\<你的账号文件夹>\SavedVariables\Ev
 
 【发文件时附这几项】
 角色名：
-插件版本：0.8.7
+插件版本：0.8.9
 首领 / 难度：
 大概哪一把：（记不得也没关系）
 发生了什么：（描述具体bug）
@@ -74,3 +77,9 @@ World of Warcraft\_retail_\WTF\Account\<你的账号文件夹>\SavedVariables\Ev
 在 /evc 的“概览”关闭“保存反馈日志”可停止新记录，历史记录保留。
 ]==],
 }
+
+if EC.Features and not EC.Features:DreamLoomEnabled() then
+    EC.HelpContent.usage = EC.HelpContent.usage:gsub("当前页签为【设置】【梦境织机】【战术板】：调整插件、战前排轴、编辑 Raidary Plan。", "当前页签为【设置】【战术板】：调整插件、编辑 Raidary Plan。")
+    EC.HelpContent.usage = EC.HelpContent.usage:gsub("已接入梦境织机[^\n]*\n", "")
+    EC.HelpContent.usage = EC.HelpContent.usage:gsub("战斗中不计算或应用；球/花[^\n]*\n", "")
+end

@@ -39,8 +39,10 @@ end
 
 local function CanPlay(kind, force)
     if not EC.state.dbReady or not EC.db.enabled then return false end
-    if EC.Runtime and not EC.Runtime:CanRun() then return false end
+    -- Explicit sound-page previews work outside the allowed raid zones.
+    -- The global addon switch remains authoritative for every playback.
     if force then return true end
+    if EC.Runtime and not EC.Runtime:CanRun() then return false end
     if not EC.db.voice or not EC.db.voice.enabled then return false end
     if kind == "NORMAL" then return EC.db.voice.normalEnabled ~= false and EC.db.reminder.enabled end
     if kind == "CORRECTION" then return EC.db.voice.correctionEnabled ~= false end
@@ -146,6 +148,10 @@ function Voice:Pump()
 end
 
 function Voice:Enqueue(definition, kind, force, interrupt, owner, special)
+    if force and EC.state.dbReady and not EC.db.enabled then
+        print("|cffffc857[奶龙打地鼠]|r 插件总开关已关闭，请先开启再测试声音。")
+        return false
+    end
     if not definition or not CanPlay(kind, force) then return false end
     local item = { file = definition.file, duration = definition.duration, label = definition.label,
         kind = kind, force = force, owner = owner, special = special,
@@ -166,6 +172,7 @@ function Voice:Enqueue(definition, kind, force, interrupt, owner, special)
 end
 
 function Voice:PlaySkill(skillKey, force, owner)
+    if EC.Features and not EC.Features:SkillEnabled(skillKey) then return false end
     return self:Enqueue(self.SKILL_FILES[skillKey], "NORMAL", force, false, owner)
 end
 

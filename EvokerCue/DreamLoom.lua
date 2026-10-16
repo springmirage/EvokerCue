@@ -36,6 +36,7 @@ function D:Better(a,b)
     return false
 end
 function D:InputsChanged()
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return end
     self.inputRevision = self.inputRevision + 1
     if self.UI then self.UI:Invalidate() end
 end

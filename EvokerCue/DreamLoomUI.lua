@@ -32,6 +32,7 @@ function Page:Invalidate()
     if self.start then self.start:SetEnabled(not Combat()) end
 end
 function Page:Refresh()
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return end
     if not self.page then return end
     local plan=EC.RaidaryPlan:GetDB();local settings=D:GetSettings(plan)
     if self.request and not D:IsCurrent(self.request) and not self.stale then self:Invalidate() end
@@ -72,6 +73,7 @@ function Page:Complete(result)
     self:Refresh()
 end
 function Page:Start()
+    if EC.Features and not EC.Features:DreamLoomEnabled() then if self.job then self.job:Cancel() end; return end
     if Combat() then self:SetStatus("请在战斗结束后手动计算；梦境织机不会在战斗中排轴。");return end
     if self.job and not self.job.result then self.job:Cancel() end
     local request,why=D:Prepare()
@@ -81,6 +83,7 @@ function Page:Start()
     local job=D:NewJob(request);self.job=job;local cpu=0
     self.start:SetEnabled(false);self.cancel:SetEnabled(true)
     local function Tick()
+        if EC.Features and not EC.Features:DreamLoomEnabled() then job:Cancel();return end
         if self.job~=job or self.stale then return end
         if not D:IsCurrent(request) then self:Invalidate();return end
         if Combat() then job:Cancel();self:Complete(job.result);self:SetStatus("进入战斗，离线计算已取消。");return end
@@ -100,6 +103,7 @@ function Page:Start()
     C_Timer.After(0,Tick)
 end
 function Page:Create(ui,frame)
+    if EC.Features and not EC.Features:DreamLoomEnabled() then return nil end
     local w=ui.widgets
     local page=CreateFrame("Frame",nil,frame);page:SetPoint("TOPLEFT",frame,"TOPLEFT",1,-64);page:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",-1,44);page:Hide()
     self.page=page

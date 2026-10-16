@@ -6,7 +6,7 @@ EC.ADDON_NAME = addonName
 EC.TITLE = "EvokerCue"
 EC.DISPLAY_NAME = "奶龙打地鼠"
 EC.DISPLAY_SUBTITLE = "EvokerCue · 奶龙个人技能轴提醒"
-EC.VERSION = "0.8.8"
+EC.VERSION = "0.8.9"
 EC.RELEASE_LABEL = "正式版"
 
 EC.defaults = {
@@ -325,7 +325,11 @@ function EC:PlayAlertSound(force)
     if not self.state.dbReady or not self.db.sound then
         return
     end
-    if not self.db.enabled or (self.Runtime and not self.Runtime:IsZoneAllowed()) then return end
+    if not self.db.enabled then
+        if force then print("|cffffc857[奶龙打地鼠]|r 插件总开关已关闭，请先开启再测试声音。") end
+        return
+    end
+    if not force and self.Runtime and not self.Runtime:IsZoneAllowed() then return end
     if not force and not self.db.sound.enabled then
         return
     end
