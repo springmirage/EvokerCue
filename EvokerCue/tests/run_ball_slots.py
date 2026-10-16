@@ -16,6 +16,8 @@ local function fixture(times, complete)
  for _,time in ipairs(times or {30}) do lines[#lines+1]=string.format('00:%02d 测试奶龙 球',time) end
  if complete==false then lines[#lines+1]='00-50 测试奶龙 球' end
  local result=EC.Parser:BuildResult(table.concat(lines,'\\n'),identity)
+ -- Model an adapter with unknown input coverage; malformed ignored text alone no longer does this.
+ if complete==false then result.absenceAllowed.BALL=false;result.negativeCorrectionAllowed=false end
  now=0;t.snapshot=t:BuildSnapshot(result);t.startTime=0;t.active=true;t.source='BOSS'
  c:BeginSession(t.snapshot,'BOSS',0);t:Update()
  return t.snapshot.events[1],t.snapshot.events[2]

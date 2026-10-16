@@ -188,7 +188,8 @@ function CastTracker:FinalizeEmpowerStop(empower, complete)
     end
     local token = empower.token
     local knownSlot = empower.knownSlot
-    local live = empower == self.activeEmpower and self.sessionActive and self.tracking
+    local live = empower == self.activeEmpower and self.sessionActive
+        and EC.Timeline and self.snapshot == EC.Timeline.snapshot
     if token ~= nil and type(token) ~= "table" then return nil, "INVALID_TOKEN_STATE" end
     if live and (token ~= self.breathToken or (token and
         (token.reserved ~= true or token.empowerGeneration ~= empower.generation))) then
@@ -198,7 +199,7 @@ function CastTracker:FinalizeEmpowerStop(empower, complete)
         overQuota = self.armedOverQuota, generation = empower.generation,
         empowerTime = Now() - empower.startedAt }
     if live and complete and token then
-        if not self.quotaConfirmed or not EC.Timeline or self.snapshot ~= EC.Timeline.snapshot then
+        if not EC.Timeline or self.snapshot ~= EC.Timeline.snapshot then
             return nil, "TOKEN_QUOTA_UNCONFIRMED"
         end
         local prepared, reason = EC.Timeline:PrepareDreamBreathTokenCommit(token, self.currentWaveIndex,
@@ -1098,13 +1099,9 @@ function CastTracker:HandleEmpowerStart(castGUID, spellID, castBarID)
     empower.startedAt = Now()
     self:CapturePrepullDreamBreathStart(empower)
     self:LogEmpower("EMPOWER_START", empower, nil, "ARMED")
-    if self.sessionActive and EC.Timeline and self.snapshot == EC.Timeline.snapshot and not self:HasReliableQuota() then
-        empower.knownSlot = EC.Timeline:GetKnownBreathSlot(EC.Timeline:GetElapsed())
-        empower.knownSnapshot = self.snapshot
-        self.activeEmpower = empower
-    end
-    if not self.sessionActive or not self.tracking then
-        EC:Log("绿喷蓄力：未确认静滞记录，guid=%s bar=%s", EC:SafeText(castGUID), EC:SafeText(castBarID))
+    if not self.sessionActive or not EC.Timeline or not EC.Timeline.active
+        or self.snapshot ~= EC.Timeline.snapshot then
+        EC:Log("绿喷蓄力：没有运行中的计划")
         return
     end
     self.activeEmpower = empower
@@ -1112,7 +1109,7 @@ function CastTracker:HandleEmpowerStart(castGUID, spellID, castBarID)
     self.armStartedAt = empower.startedAt
     self.armedOverQuota = self:IsOverQuotaBeforeNextBreath()
     self.breathToken = nil
-    if self:HasReliableQuota() and EC.Timeline and EC.Timeline.active and self.snapshot == EC.Timeline.snapshot then
+    if EC.Timeline and EC.Timeline.active and self.snapshot == EC.Timeline.snapshot then
         self:BindEmpowerToken(empower, EC.Timeline:ReserveDreamBreath(self.currentWaveIndex))
         EC.Timeline:HandleDreamBreathEmpowerStart(empower.castGUID, empower.castBarID, self.breathToken)
     end

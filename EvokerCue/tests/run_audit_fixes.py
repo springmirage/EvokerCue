@@ -23,15 +23,15 @@ assert(#result.integrity.lines==result.stats.totalLines)
 for _,text in ipairs({clean..'\\n# 测试奶龙 绿喷说明',clean..'\\n00:40 其他人 梦境吐息',clean..'\\n{time:0:40} - 其他人 {spell:355936}'}) do
  local r=parse(text);assert(r.negativeCorrectionAllowed and r.integrity.state=='COMPLETE')
 end
--- These were silent skips, not necessarily parser errors. None can prove absence.
+-- Ignored or untimed entries cannot invalidate the accepted personal plan.
 for _,line in ipairs({'00-03 测试奶龙 梦境吐息','测试奶龙 梦境吐息','03 测试奶龙 绿喷',
  '00:03 梦境吐息','00:03 {未知分组} 绿喷',
  '00:03 测试奶龙 未知技能','00:03 测试奶龙 回溯 / 测试奶龙 未知技能',
  '00:03 测试奶龙 回溯 / 无法解释的尾段','{time:0:03,p2} 测试奶龙 梦境吐息'}) do
  local r=parse(clean..'\\n'..line)
- assert(not r.negativeCorrectionAllowed and r.integrity.state~='COMPLETE',line)
- assert(not r.waves[1].quotaReliable)
- assert(r.integrity.unknownLines+r.integrity.partialLines>0,line)
+ assert(r.negativeCorrectionAllowed and r.integrity.state=='COMPLETE',line)
+ assert(r.waves[1].quotaReliable)
+ assert(r.integrity.unknownLines+r.integrity.partialLines==0,line)
  assert(#r.events>=4) -- positive parsed entries were retained
 end
 -- No evidence object must fail closed, including synthetic result callers.
@@ -55,18 +55,18 @@ end
 -- Actual correction gates must agree; on-time reminders/real success still work.
 local partial=parse('00:00 测试奶龙 静滞\\n00:01 测试奶龙 梦境吐息\\n00:02 测试奶龙 梦境吐息 待确认\\n00:30 测试奶龙 球')
 t.active=true;t.startTime=0;t.source='BOSS';t.snapshot=t:BuildSnapshot(partial)
-c:BeginSession(t.snapshot,'BOSS',0);c.currentWaveIndex=1;c.tracking=true;c.quotaConfirmed=true;c.currentWaveLimit=1;c.breathCount=1
-assert(not c:HasReliableQuota() and not c:IsOverQuotaBeforeNextBreath())
-c:ShowOverQuotaWarning();assert(not a.emergencyEntry)
-for _,event in ipairs(t.snapshot.events) do if event.skillKey=='DREAM_BREATH' then assert(not t:CanCorrectEvent(event,10)) end end
+c:BeginSession(t.snapshot,'BOSS',0);c.currentWaveIndex=1;c.tracking=true;c.quotaConfirmed=true;c.currentWaveLimit=2;c.breathCount=1
+assert(c:HasReliableQuota() and not c:IsOverQuotaBeforeNextBreath())
+assert(not a.emergencyEntry)
+for _,event in ipairs(t.snapshot.events) do if event.skillKey=='DREAM_BREATH' then assert(t:CanCorrectEvent(event,10)) end end
 c:StartBallCast('off-plan',373861);assert(a.ballEmergencyEntry and c.ballCast);c:ClearBallCast('test')
 local function ballState() for _,entry in ipairs(t:GetVisibleEntries(now)) do if entry.event.skillKey=='BALL' then return entry.state end end end
 now=30;t:Update();assert(ballState()=='NORMAL')
 c:StartBallCast('on-plan',373861);assert(c.ballCast)
 now=32;t:Update();assert(c.ballCast and c.ballCast.event.manualCastPending and ballState()=='BALL_CASTING')
 c:FinishBallCast('on-plan',373861,nil,true);assert(t.snapshot.events[#t.snapshot.events].consumed)
--- A later complete parse does not silently promote the active partial battle snapshot.
-result=parse(clean);assert(result.negativeCorrectionAllowed and not t.snapshot.negativeCorrectionAllowed)
+-- A later parse or mutation cannot alter the active battle snapshot.
+result=parse(clean);assert(result.negativeCorrectionAllowed and t.snapshot.negativeCorrectionAllowed);result.events[1].time=999;assert(t.snapshot.events[1].time==0);result=parse(clean)
 local good=t:BuildSnapshot(result);t.snapshot=good;c:BeginSession(good,'BOSS',0)
 c.currentWaveIndex=1;c.tracking=true;c.quotaConfirmed=true;c.currentWaveLimit=2;c.breathCount=2
 assert(c:IsOverQuotaBeforeNextBreath());now=5;c:StartBallCast('too-early',373861);assert(a.ballEmergencyEntry)
@@ -101,7 +101,7 @@ assert(#p:GetDB().history==10 and #p:GetDB().dreamLoom.history==10)
 for _,value in ipairs(p:GetDB().history) do assert(type(value)=='string') end
 assert(p:RestoreHistory());assert(d:Prepare())
 ''')
-print('PASS audit fixes: full-input evidence, silent skips and mixed segments, raw-source coverage, fail-closed negative correction, positive reminders, frozen snapshots, CRLF/save/copy/history/reload/provenance isolation and retention')
+print('PASS audit fixes: personal entries, ignored text and mixed segments, raw-source coverage, accepted-slot correction, positive reminders, frozen snapshots, CRLF/save/copy/history/reload/provenance isolation and retention')
 r.execute('''
 local text='00:00 测试奶龙 静滞\\n00:01 测试奶龙 绿喷\\n这一行旧解析器直接忽略'
 local result=EC.Parser:BuildResult(text,identity)
@@ -119,9 +119,9 @@ r.execute('''
 local parser=EC.Parser
 local main='00:00 测试奶龙 静滞\\n00:01 测试奶龙 绿喷'
 local r=parser:BuildResult(main..'\\n00:03 等下 绿喷',identity)
-assert(r.integrity.state=='UNKNOWN' and not r.negativeCorrectionAllowed)
+assert(r.integrity.state=='COMPLETE' and r.negativeCorrectionAllowed)
 GetNumGroupMembers=function() return 0 end
 r=parser:BuildResult(main..'\\n00:03 其他人 绿喷',identity)
-assert(r.integrity.state=='UNKNOWN' and not r.negativeCorrectionAllowed)
+assert(r.integrity.state=='COMPLETE' and r.negativeCorrectionAllowed)
 ''')
-print('PASS an apparent other owner is not exclusion proof without readable non-player roster identity')
+print('PASS unmatched owners are ignored independently of live roster availability')

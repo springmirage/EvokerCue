@@ -75,16 +75,16 @@ finish('old',true);assert(c.activeEmpower==active and c.breathCount==0);finish('
 -- A wave change discards the former owner; a delayed former STOP cannot consume new wave.
 local two='00:00 测试奶龙 静滞\n00:01 测试奶龙 绿喷\n00:05 测试奶龙 释放静滞\n01:30 测试奶龙 静滞\n01:31 测试奶龙 绿喷'
 EC.Runtime={encounterActive=true,IsEncounterRunning=function() return true end,IsZoneAllowed=function() return true end,CanRun=function() return true end};snap=start(two);stasis();now=1001;begin('wave-one');now=1090;fire('UNIT_SPELLCAST_SUCCEEDED','next-stasis',370537)
-assert(c.currentWaveIndex==2);begin('wave-two');finish('wave-one',true);assert(c.breathCount==0);finish('wave-two',true);assert(c.breathCount==1 and snap.events[#snap.events].consumed);pass('cross_wave_stale_stop');EC.Runtime=nil
+assert(c.currentWaveIndex==2);begin('wave-two');finish('wave-one',true);assert(c.breathCount==0);finish('wave-two',true);assert(c.breathCount==1 and snap.events[2].consumed and not snap.events[#snap.events].consumed);pass('cross_wave_stale_stop');EC.Runtime=nil
 -- Incomplete domain stays incomplete; unique known reminder can still close on proven release.
 local partial='00:00 测试奶龙 静滞\n00:01 测试奶龙 绿喷\n00-02 测试奶龙 绿喷\n00:30 测试奶龙 回溯'
-snap=start(partial);stasis();assert(not c:HasReliableQuota() and c.quotaReason=='DOMAIN_INCOMPLETE','quota reason '..tostring(c.quotaReason))
+snap=start(partial);stasis();assert(c:HasReliableQuota() and c.quotaReason=='MATCHED','quota reason '..tostring(c.quotaReason))
 now=1004;t:Update();assert(breathVisible()==1);begin('unique');finish('unique',true)
-assert(c.breathCount==1 and snap.events[2].consumed and breathVisible()==0 and not c:HasReliableQuota());pass('incomplete_quota_unique_late_success')
+assert(c.breathCount==1 and snap.events[2].consumed and breathVisible()==0 and c:HasReliableQuota());pass('ignored_bad_clock_unique_late_success')
 -- Multiple unknown-quota slots remain ambiguous: actual count increases but no guessed closure.
 partial=partial..'\n00:02 测试奶龙 绿喷';snap=start(partial);stasis();now=1004;t:Update();assert(breathVisible()==2,'visible='..breathVisible()..' quota='..tostring(c.quotaReason))
 begin('ambiguous');assert(not c.activeEmpower.knownSlot);finish('ambiguous',true)
-assert(c.breathCount==1 and breathVisible()==2 and not c:HasReliableQuota());pass('incomplete_quota_multiple_late_no_guess')
+assert(c.breathCount==1 and breathVisible()==1 and snap.events[2].consumed and c:HasReliableQuota());pass('ignored_bad_clock_multiple_late_claims_first')
 -- Other configured skills still dispatch/dismiss their own reminders.
 local observed={};c.DismissActiveReminder=function(_,key) observed[key]=true end
 for _,id in ipairs({363534,374227,406732,374968}) do c:HandleSucceeded('other',id) end

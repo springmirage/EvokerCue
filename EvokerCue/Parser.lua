@@ -477,35 +477,16 @@ local function BuildSharedCandidate(identity, source)
     return { value = value, source = source }
 end
 
--- Besides explicit character names, MRT can assign a line to all Evokers or all healers.
--- These tags are intentionally scoped to the CURRENT player's class/role so another class
--- or DPS Evoker does not accidentally inherit a healer-only assignment.
+-- Only explicit personal names and the user-approved {唤魔师} selector own entries.
 local function MatchAssignmentTarget(content, cleanContent, identity)
     local direct = MatchPlayerCandidate(cleanContent, identity and identity.candidates or {})
-    if direct then
-        return direct
-    end
-
+    if direct then return direct end
     local game = identity and identity.game or {}
-    local classFile = tostring(game.classFile or ""):upper()
-    local className = Trim(game.className)
-    local role = tostring(game.role or "NONE"):upper()
-
-    if classFile == "EVOKER" then
-        if HasAssignmentTag(content, "唤魔师")
-            or HasAssignmentTag(content, "EVOKER")
-            or (className ~= "" and HasAssignmentTag(content, className))
-        then
-            return BuildSharedCandidate(identity, "CLASS_TAG")
-        end
+    -- The user explicitly accepts their own Evoker selector, never other classes
+    -- or a shared healer/role selector.
+    if game.classFile == "EVOKER" and HasAssignmentTag(content, "唤魔师") then
+        return BuildSharedCandidate(identity, "CLASS_TAG")
     end
-
-    if role == "HEALER" then
-        if HasAssignmentTag(content, "治疗") or HasAssignmentTag(content, "HEALER") then
-            return BuildSharedCandidate(identity, "ROLE_TAG")
-        end
-    end
-
     return nil
 end
 
@@ -633,69 +614,6 @@ function Parser:InspectDreamLoomLine(rawLine, identity)
     return seconds, own, timeError
 end
 
-local function OtherOwnerEvidence()
-    local names = {}
-    local function Readable(value) return not (EC.IsSecret and EC:IsSecret(value)) end
-    local count = GetNumGroupMembers and GetNumGroupMembers() or 0
-    if not Readable(count) or type(count)~="number" then return names end
-    local raid = IsInRaid and IsInRaid()
-    if not Readable(raid) then return names end
-    for i=1,math.min(40,count) do
-        local unit = (raid and "raid" or "party")..i
-        local isSelf = UnitIsUnit and UnitIsUnit(unit,"player")
-        -- Unknown unit identity is not evidence of a different owner.
-        if Readable(isSelf) and isSelf == false then
-            local getter = UnitFullName or UnitName
-            local name, realm
-            if getter then name,realm=getter(unit) end
-            if Readable(name) and type(name)=="string" and name~="" then
-                names[name:lower()]=true
-                if Readable(realm) and type(realm)=="string" and realm~="" then names[(name.."-"..realm):lower()]=true end
-            end
-        end
-    end
-    return names
-end
-
-local function IsExplicitOther(segment, identity, otherOwners)
-    -- Exclusion needs an explicit readable non-player roster owner.
-    -- Failure to match the player anywhere in arbitrary prose is not evidence.
-    local owner, payload = Trim(StripMarkup(segment)):gsub("^%-+%s*", ""):match("^([^%s{}|]+)%s+(.+)$")
-    if not owner or not payload or not (otherOwners and otherOwners[owner:lower()])
-        or MatchPlayerCandidate(owner, identity.candidates) then return false end
-    return true -- The explicit roster owner, not its skill payload, proves exclusion.
-end
-
--- Evidence is scoped to supported skill domains. Prose without arrangement
--- markers is outside the grammar; an uncertain arrangement is never prose.
-local function CandidateDomains(text, identity, selfAssignment)
-    local keys = {}
-    local lowered = StripMarkup(text):lower()
-    for _, entry in ipairs(Parser:GetAliasIndex().entries) do
-        if FindAlias(lowered, entry.alias:lower()) then keys[entry.def.key] = true end
-    end
-    for digits in text:gmatch("%d+") do
-        for key, def in pairs(SKILL_DEFS) do
-            if def.ids[tonumber(digits)] then keys[key] = true end
-        end
-    end
-    -- An unexplained timed note alone does not imply an omitted Evoker cast.
-    -- Keep all domains uncertain when the player (including a shared class/role
-    -- selector) owns this instruction, or another segment of this line is theirs.
-    -- Unresolved selectors/spell payloads may still hide a personal assignment.
-    -- Known skill references above retain their own domain even without an owner.
-    local selector = GetSelectorText(text)
-    local mayBePersonal = selfAssignment
-        or MatchPlayerCandidate(StripMarkup(text), identity.candidates) ~= nil
-        or MatchAssignmentTarget(text, selector, identity) ~= nil
-        or selector:find("{", 1, true)
-        or text:lower():find("{spell:", 1, true) or text:find("|Hspell:", 1, true)
-    if not next(keys) and mayBePersonal then
-        for key in pairs(SKILL_DEFS) do keys[key] = true end
-    end
-    return keys
-end
-
 local function IsArrangementCandidate(text, identity, timed)
     local bare = Trim(StripMarkup(text)):lower()
     for _, entry in ipairs(Parser:GetAliasIndex().entries) do
@@ -707,87 +625,114 @@ local function IsArrangementCandidate(text, identity, timed)
 end
 
 function Parser:BuildDomainEvidence(result, identity, otherOwners)
-    local integrity = result.integrity
-    integrity.domains = {}
-    for key in pairs(SKILL_DEFS) do integrity.domains[key] = {state="COMPLETE", candidates={}} end
-    for _, line in ipairs(integrity.lines) do
-        for _, item in ipairs(line.evidence or {}) do
-            if item.status == "UNKNOWN" or item.status == "PARTIAL" then
-                for key in pairs(CandidateDomains(item.text, identity, line.selfAssignment)) do
-                    local domain = integrity.domains[key]
-                    domain.candidates[#domain.candidates+1] = {lineNumber=line.lineNumber, time=item.time, state=item.status}
-                    if domain.state ~= "PARTIAL" then domain.state = item.status end
-                end
-            end
+    -- Completeness means the accepted personal entries, not the entire raid note.
+    -- Ignored prose, owners, selectors and unknown spells never veto those entries.
+    result.integrity.domains = {}
+    for key in pairs(SKILL_DEFS) do
+        result.integrity.domains[key] = {state="COMPLETE", candidates={}}
+    end
+end
+
+local function OwnPayloads(segment, identity)
+    local text = StripMarkup(segment)
+    local starts = {}
+    for _, candidate in ipairs(identity.candidates or {}) do
+        local from = 1
+        while from <= #text do
+            local found, first, last = ContentMatchesCandidate(text:sub(from), candidate.value)
+            if not found then break end
+            starts[#starts + 1] = { first = first + from - 1, last = last + from - 1, candidate = candidate }
+            from = last + from
         end
     end
+    if identity.game and identity.game.classFile == "EVOKER" then
+        local from = 1
+        while true do
+            local first, last = text:find("{唤魔师}", from, true)
+            if not first then break end
+            starts[#starts + 1] = {first=first, last=last, candidate=BuildSharedCandidate(identity, "CLASS_TAG")}
+            from = last + 1
+        end
+    end
+    table.sort(starts, function(a,b) if a.first ~= b.first then return a.first < b.first end return a.last > b.last end)
+    local result, lastEnd = {}, 0
+    for _, start in ipairs(starts) do
+        if start.first > lastEnd and start.candidate then
+            result[#result + 1] = {text=text:sub(start.last + 1), candidate=start.candidate}
+            lastEnd = start.last
+        end
+    end
+    return result
+end
+
+local function ReadOwnedSkills(payload)
+    local skills, seen = {}, {}
+    local remaining = Trim(payload)
+    while remaining ~= "" do
+        remaining = remaining:gsub("^[%s:,%+%-]+", "")
+        -- Raid markers are decoration, not another assignment owner.
+        local markerEnd = remaining:match("^{rt%d+}()")
+        if markerEnd then remaining = Trim(remaining:sub(markerEnd)) end
+        local first, last, digits = remaining:find("^{[Ss][Pp][Ee][Ll][Ll]:(%d+)[^}]*}")
+        local def, spellID
+        if first then
+            spellID = tonumber(digits); def = MatchDefinitionBySpellID(spellID)
+            -- Unknown spell markup is ignored; it cannot name a different owner.
+        else
+            local bare = remaining:match("^(%d+)%s*$")
+            if bare then def=MatchDefinitionBySpellID(tonumber(bare));spellID=tonumber(bare);last=#remaining end
+            if not def then
+                for _, entry in ipairs(Parser:GetAliasIndex().entries) do
+                    local a,b = FindAlias(remaining:lower(),entry.alias:lower())
+                    if a == 1 then def=entry.def;spellID=def.primaryID;last=b;break end
+                end
+            end
+            -- A foreign/unknown word terminates this owner's payload. In a
+            -- shared line it may be the next player; never scan past it for skills.
+            if not def then break end
+        end
+        if def and not seen[def.key] then
+            seen[def.key]=true;skills[#skills+1]={def=def,spellID=spellID}
+        end
+        remaining = Trim(remaining:sub(last + 1))
+    end
+    return skills
 end
 
 function Parser:ParseLineEvents(rawLine, lineNumber, identity, otherOwners)
     local seconds, content, timeError = ExtractTimeAndContent(rawLine)
-    if not seconds then
-        -- A malformed clock does not undo independent evidence of another owner.
-        -- Keep each slash-separated segment independent, including mixed owners.
-        local body = rawLine:gsub("^%s*{time:[^}]*}%s*", ""):gsub("^%s*%d+[:%-%d%.]*%s+", "")
-        if IsArrangementCandidate(rawLine, identity, false) then
-            local extra = {coverage={}, evidence={}, issues={}}
-            for _, segment in ipairs(SplitAssignments(body)) do
-                local status = IsExplicitOther(segment, identity, otherOwners) and "EXCLUDED_OTHER"
-                    or (timeError == "NO_TIME" and "UNKNOWN" or "PARTIAL")
-                extra.coverage[#extra.coverage+1] = status
-                extra.evidence[#extra.evidence+1] = {status=status, text=segment}
-            end
-            return nil, timeError, extra
-        end
-        return nil, timeError
-    end
-
-    local events, extra = {}, { issues = {}, coverage = {}, evidence = {}, time = seconds, lineNumber = lineNumber, rawLine = rawLine }
-    for segmentIndex, segment in ipairs(SplitAssignments(content)) do
-        local cleanContent = StripMarkup(segment)
-        local selectorText = GetSelectorText(segment)
-        local matchedCandidate = MatchAssignmentTarget(segment, selectorText, identity)
-        if matchedCandidate then
-            extra.matchedPlayerName, extra.cleanContent = matchedCandidate.value, cleanContent
-            local skills, firstID, ambiguous = ResolveSkills(segment, selectorText, identity)
-            extra.spellID = firstID
-            extra.coverage[#extra.coverage+1] = (ambiguous or #skills == 0) and "PARTIAL" or "PARSED_SELF"
-            if ambiguous then
-                extra.issues[#extra.issues + 1] = {
-                    code = "AMBIGUOUS_ASSIGNMENT", lineNumber = lineNumber, time = seconds,
-                    segmentIndex = segmentIndex,
-                    text = string.format("第 %d 行第 %d 段的角色与技能归属不明确，已跳过该段。请用 / 分隔不同对象的分配。",
-                        lineNumber or 0, segmentIndex),
-                }
-            else
-                for _, skill in ipairs(skills) do
-                    local def, spellID = skill.def, skill.spellID
-                    -- Recognize disabled assignments for coverage only; never
-                    -- turn them into reminders, counts or wave inputs.
+    local events, extra = {}, {issues={},coverage={},evidence={},time=seconds,lineNumber=lineNumber,rawLine=rawLine}
+    local body = content or NormalizeSpellTokens(rawLine):gsub("^%s*{time:[^}]*}%s*", ""):gsub("^%s*%d+[:%-%d%.]*%s+", "")
+    local foundOwnSkill = false
+    for _, segment in ipairs(SplitAssignments(body)) do
+        local parsed = false
+        for _, payload in ipairs(OwnPayloads(segment, identity)) do
+            for _, skill in ipairs(ReadOwnedSkills(payload.text)) do
+                foundOwnSkill = true
+                if seconds then
+                    local def = skill.def
+                    extra.matchedPlayerName = payload.candidate.value
                     if not EC.Features or EC.Features:SkillEnabled(def.key) then
-                        events[#events + 1] = {
-                            time = seconds, lineNumber = lineNumber, rawLine = rawLine,
-                            content = segment, cleanContent = cleanContent, assignmentOrder = #events + 1,
-                            matchedPlayerName = matchedCandidate.value, matchedPlayerSource = matchedCandidate.source,
-                            skillKey = def.key, skillName = def.name, spellID = spellID, slotReliable = true,
-                            texture = ResolveDefinitionTexture(def, spellID), color = def.color, waveIndex = 0,
-                        }
+                        events[#events+1]={time=seconds,lineNumber=lineNumber,rawLine=rawLine,
+                            content=segment,cleanContent=StripMarkup(segment),assignmentOrder=#events+1,
+                            matchedPlayerName=payload.candidate.value,matchedPlayerSource=payload.candidate.source,
+                            skillKey=def.key,skillName=def.name,spellID=skill.spellID,slotReliable=true,
+                            texture=ResolveDefinitionTexture(def,skill.spellID),color=def.color,waveIndex=0}
                     end
+                    parsed = true
                 end
             end
-        else
-            extra.coverage[#extra.coverage+1] = IsExplicitOther(segment, identity, otherOwners) and "EXCLUDED_OTHER" or "UNKNOWN"
         end
-        extra.evidence[#extra.evidence+1] = {status=extra.coverage[#extra.coverage], text=segment, time=seconds}
+        local status = parsed and "PARSED_SELF" or "IGNORED"
+        extra.coverage[#extra.coverage+1]=status
+        extra.evidence[#extra.evidence+1]={status=status,text=segment,time=seconds}
     end
-    if #events > 0 then return events, nil, extra end
-    if extra.matchedPlayerName and #extra.issues == 0 then
-        local parsed = true
-        for _, status in ipairs(extra.coverage) do if status ~= "PARSED_SELF" and status ~= "EXCLUDED_OTHER" then parsed = false end end
-        if parsed then return {}, nil, extra end
+    if foundOwnSkill and not seconds then
+        extra.issues[#extra.issues+1]={code="PERSONAL_TIME_UNPARSED",lineNumber=lineNumber,
+            text=string.format("第 %d 行本人技能时间无法解析，已跳过该条。",lineNumber or 0)}
     end
-    return nil, #extra.issues > 0 and "AMBIGUOUS_ASSIGNMENT"
-        or (extra.matchedPlayerName and "UNSUPPORTED_SKILL" or "PLAYER_MISMATCH"), extra
+    if foundOwnSkill and seconds then return events,nil,extra end
+    return nil,"IGNORED",extra
 end
 
 function Parser:ParseLine(rawLine, lineNumber, identity)
@@ -931,7 +876,7 @@ function Parser:BuildResult(noteText, identity, sourceIssues, deduplicateAfterLi
 
     local lineNumber = 0
     local coverage = result.integrity
-    local otherOwners = OtherOwnerEvidence()
+    local otherOwners = {} -- Name/own-Evoker matching needs no roster or other-class inference.
     for line in (noteText .. "\n"):gmatch("(.-)\n") do
         lineNumber = lineNumber + 1
         line = line:gsub("\r$", "")

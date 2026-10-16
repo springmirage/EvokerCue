@@ -43,34 +43,14 @@ def main():
  local c,t,p=EC.CastTracker,EC.Timeline,EC.Parser
  local clean='00:00 测试奶龙 静滞\n00:01 测试奶龙 绿喷\n00:02 测试奶龙 绿喷\n00:29 测试奶龙 释放静滞\n01:00 测试奶龙 回溯'
  passed={};local function pass(name) passed[#passed+1]=name end
- -- Whole-note coverage remains diagnostic; plain timed notes have no personal-skill evidence.
- for _,line in ipairs({'00:15 场地变化','{time:0:27} - 全团集合','00-20 场地变化','00:15 <场地变化>'}) do
+ -- Ignored text cannot poison the accepted personal plan.
+ for _,line in ipairs({'00:15 场地变化','{time:0:27} - 全团集合','00-20 场地变化','00:15 <场地变化>',
+  '00:15 测试奶龙 未知技能','00-15 测试奶龙 绿喷','00:15 {圣骑士}给坦克自由','00:15 {未知分组} 未知技能'}) do
   local result=ParseBoard(clean..'\n'..line)
-  assert(result.integrity.state~='COMPLETE' and result.waves[1].breathLimit==2 and result.waves[1].quotaReliable)
-  assert(result.integrity.domains.DREAM_BREATH.state=='COMPLETE')
+  assert(result.waves[1].breathLimit==2 and result.waves[1].quotaReliable,line)
+  assert(result.integrity.domains.DREAM_BREATH.state=='COMPLETE',line)
  end
- pass('unrelated_timed_text_does_not_invent_missing_breath')
- -- Self-owned unknown skills, class/role assignments and truncated mixed segments remain unsafe.
- for _,line in ipairs({'00:15 测试奶龙 未知技能','00-15 测试奶龙 未知技能','测试奶龙 未知技能',
-  '00:15 {治疗} 未知技能','00:15 {唤魔师} 未知技能','00:15 测试奶龙 回溯 / 无法解释的尾段',
-  '00:15 {未知分组} 未知技能','00:15 测试奶龙 <未知技能>','00:15 <测试奶龙> 未知技能','00:15 {spell:9999999}'}) do
-  local result=ParseBoard(clean..'\n'..line)
-  assert(not result.waves[1].quotaReliable and result.waves[1].invalidReason=='DOMAIN_INCOMPLETE',line)
- end
- pass('self_unknown_selector_markup_and_mixed_tail_stay_protected')
- -- Even without an owner, a supported skill reference is meaningful domain evidence.
- for _,line in ipairs({'00:15 未证实角色 绿喷','00-15 测试奶龙 绿喷','00:15 绿喷','绿喷','00:15 {未知分组} 绿喷','00:15 {spell:355936}','00:15 <绿喷>'}) do
-  local result=ParseBoard(clean..'\n'..line)
-  assert(not result.waves[1].quotaReliable and result.integrity.domains.DREAM_BREATH.state~='COMPLETE',line)
- end
- pass('missing_time_or_owner_breath_reference_stays_protected')
- -- Proven other owner exclusions still require roster evidence, not guesses.
- GetNumGroupMembers=function() return 2 end;IsInRaid=function() return true end
- UnitIsUnit=function(unit) return unit=='raid1' end;UnitFullName=function(unit) if unit=='raid2' then return '其他人','测试服' end end
- local result=ParseBoard(clean..'\n00:15 其他人 绿喷');assert(result.waves[1].quotaReliable)
- GetNumGroupMembers=function() return 0 end
- result=ParseBoard(clean..'\n00:15 其他人 绿喷');assert(not result.waves[1].quotaReliable)
- pass('other_owner_requires_proof')
+ pass('ignored_or_untimed_entries_do_not_poison_accepted_slots')
  -- Genuine lifecycle omissions are independent from unrelated prose.
  result=ParseBoard('00:00 测试奶龙 静滞\n00:30 测试奶龙 静滞\n00:31 测试奶龙 绿喷')
  assert(not result.waves[1].quotaReliable and not result.waves[2].quotaReliable)
@@ -87,7 +67,7 @@ def main():
  -- Incomplete quota and >1 known slot still have no unambiguous owner.
  snap=StartBoard(clean..'\n00-15 测试奶龙 绿喷');Stasis();now=1004;t:Update();assert(LateBreaths()==2)
  BeginBreath('ambiguous');assert(not c.activeEmpower.knownSlot);EndBreath('ambiguous',true)
- assert(c.breathCount==1 and LateBreaths()==2 and not c:HasReliableQuota());pass('true_ambiguity_not_blindly_closed')
+ assert(c.breathCount==1 and LateBreaths()==1 and snap.events[2].consumed and c:HasReliableQuota());pass('ignored_bad_clock_does_not_block_ordered_claim')
  -- Release clears cache while preserving the active MRT_TEST wave/count and ledger.
  snap=StartBoard(clean);Stasis();now=1001;BeginBreath('release');EndBreath('release',true)
  local consumed=snap.events[2];assert(c.prepullStasisEligible and c.prepullDreamBreathCount==1)

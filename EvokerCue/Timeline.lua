@@ -329,16 +329,8 @@ function Timeline:GetWaveTokenStats(waveIndex)
 end
 
 function Timeline:ExpireDreamBreathTokensBeforeWave(waveIndex, reason)
-    if not self.snapshot then return 0 end
-    local count = 0
-    for _, token in ipairs(self.snapshot.events) do
-        if token.skillKey == "DREAM_BREATH" and (token.waveIndex or 0) < waveIndex
-            and not token.consumed and not token.expired then
-            self:CloseReminder(token, reason or "进入下一实际静滞", not token.reserved)
-            count = count + 1
-        end
-    end
-    return count
+    -- Compatibility hook: Stasis cannot retire the independent claim ledger.
+    return 0
 end
 
 function Timeline:EnterActualWave(waveIndex)
@@ -346,7 +338,7 @@ function Timeline:EnterActualWave(waveIndex)
         return nil, nil
     end
 
-    self:ExpireDreamBreathTokensBeforeWave(waveIndex, "进入实际 W" .. tostring(waveIndex))
+    -- Stasis transitions never expire unclaimed Dream Breath slots.
     local effectiveLimit = self:RecalculateWaveDisplayQuota(waveIndex)
     local stats = self:GetWaveTokenStats(waveIndex)
 
@@ -362,7 +354,7 @@ function Timeline:EnterActualWave(waveIndex)
 end
 
 -- Every REAL released Dream Breath consumes the earliest still-available MRT token.
--- If the current wave has no token left, this naturally borrows from the next wave.
+-- Selection uses the entire plan, independently of actual or planned Stasis.
 function Timeline:ConsumeNextDreamBreathToken(actualWaveIndex, reason)
     local token = self:ReserveDreamBreath(actualWaveIndex)
     if not token then return nil, false end
@@ -373,31 +365,17 @@ end
 function Timeline:ReserveDreamBreath(waveIndex)
     if not self.active or not self.snapshot then return nil end
     local cast = EC.CastTracker
-    if not cast or cast.snapshot ~= self.snapshot or not cast:HasReliableQuota() then return nil end
-    local current = self.snapshot.waves[waveIndex]
-    if not current or current.runtimeInvalid or current.quotaReliable == false then return nil end
-    local nextWave = self.snapshot.waves[waveIndex + 1]
-    local canBorrow = nextWave and nextWave.mappingReliable ~= false and nextWave.quotaReliable ~= false
-        and not nextWave.runtimeInvalid and (nextWave.breathLimit or 0) > 0
-    local chosen
+    if not cast or not cast.sessionActive or cast.snapshot ~= self.snapshot then return nil end
+    -- One ordered ledger for the whole plan. Stasis and quota diagnostics do not
+    -- decide whether a completed Dream Breath can claim a parsed personal slot.
     for _, token in ipairs(self.snapshot.events) do
-        if token.skillKey == "DREAM_BREATH" and not token.consumed and not token.expired
-            and not token.reserved and not token.reminderClosed and token.waveIndex == waveIndex then
-            chosen = token; break
+        if token.skillKey == "DREAM_BREATH" and not token.consumed
+            and not token.expired and not token.reserved and not token.reminderClosed then
+            token.reserved = true
+            return token
         end
     end
-    -- Debt is permitted only after the confirmed quota is exhausted, and only into
-    -- the immediately following reliable wave. Never skip unknown/depleted waves.
-    if not chosen and canBorrow and cast.breathCount >= (cast.currentWaveLimit or math.huge) then
-        for _, token in ipairs(self.snapshot.events) do
-            if token.skillKey == "DREAM_BREATH" and token.waveIndex == waveIndex + 1
-                and not token.consumed and not token.expired and not token.reminderClosed and not token.reserved then
-                chosen = token; break
-            end
-        end
-    end
-    if chosen then chosen.reserved = true end
-    return chosen
+    return nil
 end
 
 -- Prepare is read-only. In particular, clock reads and quota arithmetic happen
@@ -418,13 +396,6 @@ function Timeline:PrepareDreamBreathTokenCommit(token, actualWave, reason, prepu
         if event == token then found = true; break end
     end
     if not found then return nil, "TOKEN_OUTSIDE_SNAPSHOT" end
-    local wave = self.snapshot.waves[actualWave]
-    local target = self.snapshot.waves[token.waveIndex or 0]
-    if not wave or not target or wave.runtimeInvalid or target.runtimeInvalid
-        or wave.quotaReliable == false or target.quotaReliable == false then return nil, "TOKEN_QUOTA_UNCONFIRMED" end
-    if token.waveIndex ~= actualWave and (prepull or token.waveIndex ~= actualWave + 1) then
-        return nil, "TOKEN_WAVE_MISMATCH"
-    end
     local commit = { token = token, actualWave = actualWave, consumedAt = self:GetElapsed(),
         reason = reason or "实际绿喷", borrowed = token.waveIndex > actualWave, display = {} }
     if commit.borrowed then
@@ -507,14 +478,6 @@ function Timeline:InvalidateRecord(reason, waveIndex, deferNotify)
         if event.skillKey == "DREAM_BREATH" then
             event.earlyWarningActive = false
             if event.waveIndex == waveIndex then event.quotaReliable = false end
-            if event.diagnosticLateLogged and not event.consumed and event.slotReliable ~= true then
-                closed[#closed + 1] = { token = event, changed = not event.reminderClosed }
-                event.reminderClosed = true
-                event.closeReason = "波次对位失效"
-                event.closedAt = elapsed
-                event.expired = true
-                event.expiredReason = event.closeReason
-            end
         end
     end
     self.earlyWarningToken = nil
@@ -553,8 +516,7 @@ function Timeline:CanTrackKnownSlot(event, elapsed)
         or not cast or not cast.sessionActive or cast.snapshot ~= self.snapshot then return false end
     if event.skillKey == "BALL" then return true end
     if event.skillKey ~= "DREAM_BREATH" then return false end
-    local wave = self.snapshot.waves[event.waveIndex or 0]
-    return not wave or not wave.nextStasisTime or elapsed < wave.nextStasisTime
+    return true -- Parsed personal Dream Breath slots remain claimable across Stasis boundaries.
 end
 
 function Timeline:GetKnownBreathSlot(elapsed)
@@ -804,6 +766,7 @@ function Timeline:DismissPlannedStasisWave(waveIndex, reason)
 end
 
 function Timeline:DismissActiveEvent(skillKey, reason)
+    if skillKey == "RELEASE_STASIS" or skillKey == "REWIND" then return nil end -- Timer-only cues.
     if skillKey == "BALL" then return nil end -- Only its matched START owner may finish a ball slot.
     if not self.active or not self.snapshot then
         return nil
@@ -858,11 +821,7 @@ function Timeline:Update()
             local remaining = event.time - elapsed
             local wave = self.snapshot.waves[event.waveIndex or 0]
             if event.skillKey == "DREAM_BREATH" then
-                if wave and wave.nextStasisTime and elapsed >= wave.nextStasisTime then
-                    self:CloseReminder(event, "进入下一计划静滞", not event.reserved)
-                elseif remaining < -hold and not self:CanTrackKnownSlot(event, elapsed) then
-                    self:CloseReminder(event, "未确认配额，仅保留到点提醒", not event.reserved)
-                end
+                -- Unclaimed Dream Breath slots stay pending until an actual completed cast.
             elseif event.skillKey == "BALL" and event.slotReliable == true then
                 -- RefreshBallSlots owns all clock-driven ball transitions.
                 -- CASTING is immune to postHold and newer planned windows.
