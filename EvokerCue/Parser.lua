@@ -477,15 +477,17 @@ local function BuildSharedCandidate(identity, source)
     return { value = value, source = source }
 end
 
--- Only explicit personal names and the user-approved {唤魔师} selector own entries.
+-- Personal names and current-player class/role selectors own accepted entries.
 local function MatchAssignmentTarget(content, cleanContent, identity)
     local direct = MatchPlayerCandidate(cleanContent, identity and identity.candidates or {})
     if direct then return direct end
     local game = identity and identity.game or {}
-    -- The user explicitly accepts their own Evoker selector, never other classes
-    -- or a shared healer/role selector.
+    -- Shared selectors apply only when the current player belongs to the target.
     if game.classFile == "EVOKER" and HasAssignmentTag(content, "唤魔师") then
         return BuildSharedCandidate(identity, "CLASS_TAG")
+    end
+    if game.role == "HEALER" and HasAssignmentTag(content, "治疗") then
+        return BuildSharedCandidate(identity, "ROLE_TAG")
     end
     return nil
 end
@@ -645,14 +647,22 @@ local function OwnPayloads(segment, identity)
             from = last + from
         end
     end
-    if identity.game and identity.game.classFile == "EVOKER" then
+    local function AddSharedSelector(tag, source)
+        local candidate = BuildSharedCandidate(identity, source)
+        if not candidate then return end
         local from = 1
         while true do
-            local first, last = text:find("{唤魔师}", from, true)
+            local first, last = text:find(tag, from, true)
             if not first then break end
-            starts[#starts + 1] = {first=first, last=last, candidate=BuildSharedCandidate(identity, "CLASS_TAG")}
+            starts[#starts + 1] = {first=first, last=last, candidate=candidate}
             from = last + 1
         end
+    end
+    if identity.game and identity.game.classFile == "EVOKER" then
+        AddSharedSelector("{唤魔师}", "CLASS_TAG")
+    end
+    if identity.game and identity.game.role == "HEALER" then
+        AddSharedSelector("{治疗}", "ROLE_TAG")
     end
     table.sort(starts, function(a,b) if a.first ~= b.first then return a.first < b.first end return a.last > b.last end)
     local result, lastEnd = {}, 0
@@ -703,7 +713,7 @@ function Parser:ParseLineEvents(rawLine, lineNumber, identity, otherOwners)
     local seconds, content, timeError = ExtractTimeAndContent(rawLine)
     local events, extra = {}, {issues={},coverage={},evidence={},time=seconds,lineNumber=lineNumber,rawLine=rawLine}
     local body = content or NormalizeSpellTokens(rawLine):gsub("^%s*{time:[^}]*}%s*", ""):gsub("^%s*%d+[:%-%d%.]*%s+", "")
-    local foundOwnSkill = false
+    local foundOwnSkill, emitted = false, {}
     for _, segment in ipairs(SplitAssignments(body)) do
         local parsed = false
         for _, payload in ipairs(OwnPayloads(segment, identity)) do
@@ -712,7 +722,8 @@ function Parser:ParseLineEvents(rawLine, lineNumber, identity, otherOwners)
                 if seconds then
                     local def = skill.def
                     extra.matchedPlayerName = payload.candidate.value
-                    if not EC.Features or EC.Features:SkillEnabled(def.key) then
+                    if not emitted[def.key] and (not EC.Features or EC.Features:SkillEnabled(def.key)) then
+                        emitted[def.key] = true -- One event per skill/time/line, even with overlapping own selectors.
                         events[#events+1]={time=seconds,lineNumber=lineNumber,rawLine=rawLine,
                             content=segment,cleanContent=StripMarkup(segment),assignmentOrder=#events+1,
                             matchedPlayerName=payload.candidate.value,matchedPlayerSource=payload.candidate.source,

@@ -122,7 +122,7 @@ C_VoiceChat.SpeakText=function() return false end
 assert(not EC.Voice:PlaySkill('STASIS',true))
 EC.db.voice.tts.volume=0;assert(not EC.Voice:PlaySkill('STASIS',true))
 assert(not EC.Features:SkillEnabled('BALL') and not EC.Features:DreamLoomEnabled())
-assert(not EC.Voice:PlaySkill('BALL',true));assert(EC.VERSION=='0.8.13')
+assert(not EC.Voice:PlaySkill('BALL',true));assert(EC.VERSION=='0.8.14')
 """)
 print('PASS fresh/upgrade default TTS; one-time migration preserves old switches, channels, plan/alias data and later OGG choice')
 print('PASS ten voice UI buttons through TTS with exact text/voice/rate/volume/overlap; independent game-alert test retained')
@@ -130,12 +130,12 @@ print('PASS test-outside-zone fix and automatic global/zone/per-kind gates for d
 print('PASS enumerated voice 0 preference/fallback/manual selection; no API/no voices/stale ID/throw/false/zero-volume report failure')
 print('PASS OGG selectable and all ten original assets usable without TTS API; OGG StopSound uses own handle')
 print('PASS local queue, priority, stale-owner pruning, session/backend changes; no global TTS stop or CVar writes')
-print('PASS source selector and dynamic voice selector; disabled features and version 0.8.13 unchanged')
+print('PASS source selector and dynamic voice selector; disabled features and version 0.8.14 unchanged')
 # Full production load, with no API invocation or real game session.
 f=LuaRuntime(unpack_returned_tuples=True);f.execute((ROOT/'tests/wow_mock.lua').read_text(encoding='utf-8'));f.execute('SlashCmdList={}')
 for line in (ROOT/'EvokerCue.toc').read_text(encoding='utf-8').splitlines():
  if line.endswith('.lua'):f.execute((ROOT/line).read_text(encoding='utf-8-sig'),'EvokerCue',f.globals().EC)
-f.execute('assert(EC.VERSION=="0.8.13" and EC.TTS and not EC.Features.ball and not EC.Features:DreamLoomEnabled())')
+f.execute('assert(EC.VERSION=="0.8.14" and EC.TTS and not EC.Features.ball and not EC.Features:DreamLoomEnabled())')
 assert 'StopSpeakingText(' not in (ROOT/'TTS.lua').read_text(encoding='utf-8')
 assert 'StopSpeakingText(' not in (ROOT/'Voice.lua').read_text(encoding='utf-8')
 print('PASS full production TOC load with new independent TTS module and retained feature policy')

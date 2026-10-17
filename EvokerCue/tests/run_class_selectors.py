@@ -15,7 +15,7 @@ local function ignored(line)
 end
 ignored('{time:0:15} {圣骑士}给坦克自由')
 pass('actual_paladin_tag_ignored_without_domain_pollution')
-for _,tag in ipairs({'圣骑士','聖騎士','PALADIN','paladin',' Paladin ','战士','WARRIOR','猎人','HUNTER','潜行者','ROGUE','牧师','PRIEST','死亡骑士','DEATHKNIGHT','萨满祭司','SHAMAN','法师','MAGE','术士','WARLOCK','武僧','MONK','德鲁伊','DRUID','恶魔猎手','DEMONHUNTER','未知分组','治疗','HEALER','PALADINX'}) do
+for _,tag in ipairs({'圣骑士','聖騎士','PALADIN','paladin',' Paladin ','战士','WARRIOR','猎人','HUNTER','潜行者','ROGUE','牧师','PRIEST','死亡骑士','DEATHKNIGHT','萨满祭司','SHAMAN','法师','MAGE','术士','WARLOCK','武僧','MONK','德鲁伊','DRUID','恶魔猎手','DEMONHUNTER','未知分组','HEALER','PALADINX'}) do
  ignored('00:15 {'..tag..'} 未知技能');ignored('00:15 {'..tag..'} 绿喷');ignored('00-15 {'..tag..'} 绿喷')
 end
 pass('all_other_classes_unknown_groups_roles_and_malformed_foreign_lines_ignored')

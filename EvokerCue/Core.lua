@@ -6,7 +6,7 @@ EC.ADDON_NAME = addonName
 EC.TITLE = "EvokerCue"
 EC.DISPLAY_NAME = "奶龙打地鼠"
 EC.DISPLAY_SUBTITLE = "EvokerCue · 奶龙个人技能轴提醒"
-EC.VERSION = "0.8.13"
+EC.VERSION = "0.8.14"
 EC.RELEASE_LABEL = "正式版"
 
 EC.defaults = {
